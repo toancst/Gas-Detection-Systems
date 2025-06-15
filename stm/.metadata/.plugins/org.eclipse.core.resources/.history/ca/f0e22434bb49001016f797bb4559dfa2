@@ -1,0 +1,52 @@
+#include "stm32f4xx_hal.h"
+#include <string.h>
+
+UART_HandleTypeDef huart2;
+
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_USART2_UART_Init(void);
+
+int main(void)
+{
+  HAL_Init();
+  SystemClock_Config();
+  MX_GPIO_Init();
+  MX_USART2_UART_Init();
+
+  uint8_t led1_state = 0;
+  uint8_t led2_state = 0;
+
+  char msg[64];
+
+  while (1)
+  {
+    // Nút PB0 điều khiển LED PA5
+    if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0) == GPIO_PIN_RESET)
+    {
+      HAL_Delay(50); // chống dội
+      if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0) == GPIO_PIN_RESET)
+      {
+        led1_state ^= 1;
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, led1_state ? GPIO_PIN_SET : GPIO_PIN_RESET);
+        sprintf(msg, "Button1 pressed. LED1 = %d\r\n", led1_state);
+        HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+        while (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0) == GPIO_PIN_RESET);
+      }
+    }
+
+    // Nút PB1 điều khiển LED PA6
+    if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_1) == GPIO_PIN_RESET)
+    {
+      HAL_Delay(50);
+      if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_1) == GPIO_PIN_RESET)
+      {
+        led2_state ^= 1;
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, led2_state ? GPIO_PIN_SET : GPIO_PIN_RESET);
+        sprintf(msg, "Button2 pressed. LED2 = %d\r\n", led2_state);
+        HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+        while (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_1) == GPIO_PIN_RESET);
+      }
+    }
+  }
+}

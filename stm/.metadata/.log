@@ -1,0 +1,27 @@
+!SESSION 2025-06-15 14:17:41.141 -----------------------------------------------
+eclipse.buildId=Version 1.17.0
+java.version=21.0.3
+java.vendor=Eclipse Adoptium
+BootLoader constants: OS=win32, ARCH=x86_64, WS=win32, NL=en_US
+Command-line arguments:  -os win32 -ws win32 -arch x86_64
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 4 4 2025-06-15 14:18:14.314
+!MESSAGE CubeMX plugin appears to be active, Log4j initialization might be too late.
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 1 1 2025-06-15 14:18:14.315
+!MESSAGE Log4j2 initialized with config file D:\prj-upload-github\nhung\Gas-Detection-Systems\stm\.metadata\.log4j2.xml
+
+!ENTRY com.st.stm32cube.ide.mcu.ide 1 1 2025-06-15 14:18:22.863
+!MESSAGE Started RMI Server, listening on port 41337
+
+!ENTRY org.eclipse.cdt.core 1 0 2025-06-15 14:19:52.239
+!MESSAGE Indexed 'mq2' (19 sources, 81 headers) in 4.29 sec: 4,276 declarations; 17,933 references; 0 unresolved inclusions; 1 syntax errors; 2 unresolved names (0.009%)
+
+!ENTRY org.eclipse.cdt.core 1 0 2025-06-15 14:26:37.163
+!MESSAGE Indexed 'led_and_button' (19 sources, 81 headers) in 3.19 sec: 4,276 declarations; 17,933 references; 0 unresolved inclusions; 1 syntax errors; 2 unresolved names (0.009%)
+
+!ENTRY org.eclipse.cdt.core 1 0 2025-06-15 14:37:20.027
+!MESSAGE Indexed 'led_and_button' (20 sources, 85 headers) in 0.535 sec: 4,962 declarations; 22,786 references; 0 unresolved inclusions; 1 syntax errors; 2 unresolved names (0.0072%)
+
+!ENTRY org.eclipse.cdt.core 1 0 2025-06-15 14:37:22.355
+!MESSAGE Indexed 'led_and_button' (20 sources, 85 headers) in 0.504 sec: 4,962 declarations; 22,786 references; 0 unresolved inclusions; 1 syntax errors; 2 unresolved names (0.0072%)

@@ -1,0 +1,167 @@
+14:24:00 **** Incremental Build of configuration Debug for project mq2 ****
+make -j16 all 
+arm-none-eabi-gcc "../Core/Src/main.c" -mcpu=cortex-m4 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F401xC -c -I../Core/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/main.d" -MT"Core/Src/main.o" --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o "Core/Src/main.o"
+arm-none-eabi-gcc "../Core/Src/stm32f4xx_hal_msp.c" -mcpu=cortex-m4 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F401xC -c -I../Core/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/stm32f4xx_hal_msp.d" -MT"Core/Src/stm32f4xx_hal_msp.o" --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o "Core/Src/stm32f4xx_hal_msp.o"
+arm-none-eabi-gcc "../Core/Src/stm32f4xx_it.c" -mcpu=cortex-m4 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F401xC -c -I../Core/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/stm32f4xx_it.d" -MT"Core/Src/stm32f4xx_it.o" --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o "Core/Src/stm32f4xx_it.o"
+arm-none-eabi-gcc "../Core/Src/system_stm32f4xx.c" -mcpu=cortex-m4 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F401xC -c -I../Core/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/system_stm32f4xx.d" -MT"Core/Src/system_stm32f4xx.o" --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o "Core/Src/system_stm32f4xx.o"
+../Core/Src/main.c:8:1: error: unknown type name 'ADC_HandleTypeDef'; did you mean 'DMA_HandleTypeDef'?
+    8 | ADC_HandleTypeDef hadc1;
+      | ^~~~~~~~~~~~~~~~~
+      | DMA_HandleTypeDef
+../Core/Src/main.c:10:1: error: unknown type name 'UART_HandleTypeDef'; did you mean 'DMA_HandleTypeDef'?
+   10 | UART_HandleTypeDef huart2;
+      | ^~~~~~~~~~~~~~~~~~
+      | DMA_HandleTypeDef
+../Core/Src/main.c:26:31: error: unknown type name 'ADC_HandleTypeDef'; did you mean 'DMA_HandleTypeDef'?
+   26 | void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
+      |                               ^~~~~~~~~~~~~~~~~
+      |                               DMA_HandleTypeDef
+../Core/Src/main.c: In function 'MQ2_begin':
+../Core/Src/main.c:59:9: warning: implicit declaration of function 'HAL_UART_Transmit_IT' [-Wimplicit-function-declaration]
+   59 |         HAL_UART_Transmit_IT(&huart2, (uint8_t *)txBuf, strlen(txBuf));
+      |         ^~~~~~~~~~~~~~~~~~~~
+../Core/Src/main.c: In function 'MQ2_MQCalibration':
+../Core/Src/main.c:150:9: warning: implicit declaration of function 'HAL_ADC_Start_IT'; did you mean 'HAL_DMA_Start_IT'? [-Wimplicit-function-declaration]
+  150 |         HAL_ADC_Start_IT(&hadc1);
+      |         ^~~~~~~~~~~~~~~~
+      |         HAL_DMA_Start_IT
+../Core/Src/main.c: In function 'MX_ADC1_Init':
+../Core/Src/main.c:259:3: error: unknown type name 'ADC_ChannelConfTypeDef'; did you mean 'ADC_Common_TypeDef'?
+  259 |   ADC_ChannelConfTypeDef sConfig = {0};
+      |   ^~~~~~~~~~~~~~~~~~~~~~
+      |   ADC_Common_TypeDef
+../Core/Src/main.c:261:8: error: request for member 'Instance' in something not a structure or union
+  261 |   hadc1.Instance = ADC1;
+      |        ^
+../Core/Src/main.c:262:8: error: request for member 'Init' in something not a structure or union
+  262 |   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+      |        ^
+../Core/Src/main.c:262:31: error: 'ADC_CLOCK_SYNC_PCLK_DIV2' undeclared (first use in this function); did you mean 'ADC_CLOCKPRESCALER_PCLK_DIV2'?
+  262 |   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+      |                               ^~~~~~~~~~~~~~~~~~~~~~~~
+      |                               ADC_CLOCKPRESCALER_PCLK_DIV2
+../Core/Src/main.c:262:31: note: each undeclared identifier is reported only once for each function it appears in
+../Core/Src/main.c:263:8: error: request for member 'Init' in something not a structure or union
+  263 |   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+      |        ^
+../Core/Src/main.c:263:27: error: 'ADC_RESOLUTION_12B' undeclared (first use in this function); did you mean 'ADC_RESOLUTION12b'?
+  263 |   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+      |                           ^~~~~~~~~~~~~~~~~~
+      |                           ADC_RESOLUTION12b
+../Core/Src/main.c:264:8: error: request for member 'Init' in something not a structure or union
+  264 |   hadc1.Init.ScanConvMode = DISABLE;
+      |        ^
+../Core/Src/main.c:265:8: error: request for member 'Init' in something not a structure or union
+  265 |   hadc1.Init.ContinuousConvMode = DISABLE;
+      |        ^
+../Core/Src/main.c:266:8: error: request for member 'Init' in something not a structure or union
+  266 |   hadc1.Init.DiscontinuousConvMode = DISABLE;
+      |        ^
+../Core/Src/main.c:267:8: error: request for member 'Init' in something not a structure or union
+  267 |   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+      |        ^
+../Core/Src/main.c:267:37: error: 'ADC_EXTERNALTRIGCONVEDGE_NONE' undeclared (first use in this function); did you mean 'ADC_EXTERNALTRIG_EDGE_NONE'?
+  267 |   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+      |                                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                     ADC_EXTERNALTRIG_EDGE_NONE
+../Core/Src/main.c:268:8: error: request for member 'Init' in something not a structure or union
+  268 |   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+      |        ^
+../Core/Src/main.c:268:33: error: 'ADC_SOFTWARE_START' undeclared (first use in this function)
+  268 |   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+      |                                 ^~~~~~~~~~~~~~~~~~
+../Core/Src/main.c:269:8: error: request for member 'Init' in something not a structure or union
+  269 |   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+      |        ^
+../Core/Src/main.c:269:26: error: 'ADC_DATAALIGN_RIGHT' undeclared (first use in this function)
+  269 |   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+      |                          ^~~~~~~~~~~~~~~~~~~
+../Core/Src/main.c:270:8: error: request for member 'Init' in something not a structure or union
+  270 |   hadc1.Init.NbrOfConversion = 1;
+      |        ^
+../Core/Src/main.c:271:8: error: request for member 'Init' in something not a structure or union
+  271 |   hadc1.Init.DMAContinuousRequests = DISABLE;
+      |        ^
+../Core/Src/main.c:272:8: error: request for member 'Init' in something not a structure or union
+  272 |   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+      |        ^
+../Core/Src/main.c:272:29: error: 'ADC_EOC_SINGLE_CONV' undeclared (first use in this function); did you mean 'EOC_SINGLE_CONV'?
+  272 |   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+      |                             ^~~~~~~~~~~~~~~~~~~
+      |                             EOC_SINGLE_CONV
+../Core/Src/main.c:273:7: warning: implicit declaration of function 'HAL_ADC_Init'; did you mean 'HAL_DeInit'? [-Wimplicit-function-declaration]
+  273 |   if (HAL_ADC_Init(&hadc1) != HAL_OK)
+      |       ^~~~~~~~~~~~
+      |       HAL_DeInit
+../Core/Src/main.c:278:10: error: request for member 'Channel' in something not a structure or union
+  278 |   sConfig.Channel = ADC_CHANNEL_1;
+      |          ^
+../Core/Src/main.c:278:21: error: 'ADC_CHANNEL_1' undeclared (first use in this function); did you mean 'DAC2_CHANNEL_1'?
+  278 |   sConfig.Channel = ADC_CHANNEL_1;
+      |                     ^~~~~~~~~~~~~
+      |                     DAC2_CHANNEL_1
+../Core/Src/main.c:279:10: error: request for member 'Rank' in something not a structure or union
+  279 |   sConfig.Rank = 1;
+      |          ^
+../Core/Src/main.c:280:10: error: request for member 'SamplingTime' in something not a structure or union
+  280 |   sConfig.SamplingTime = ADC_SAMPLETIME_15CYCLES;
+      |          ^
+../Core/Src/main.c:280:26: error: 'ADC_SAMPLETIME_15CYCLES' undeclared (first use in this function); did you mean 'ADC_SAMPLETIME_2CYCLE_5'?
+  280 |   sConfig.SamplingTime = ADC_SAMPLETIME_15CYCLES;
+      |                          ^~~~~~~~~~~~~~~~~~~~~~~
+      |                          ADC_SAMPLETIME_2CYCLE_5
+../Core/Src/main.c:281:7: warning: implicit declaration of function 'HAL_ADC_ConfigChannel' [-Wimplicit-function-declaration]
+  281 |   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+      |       ^~~~~~~~~~~~~~~~~~~~~
+../Core/Src/main.c: In function 'MX_USART2_UART_Init':
+../Core/Src/main.c:289:9: error: request for member 'Instance' in something not a structure or union
+  289 |   huart2.Instance = USART2;
+      |         ^
+../Core/Src/main.c:290:9: error: request for member 'Init' in something not a structure or union
+  290 |   huart2.Init.BaudRate = 115200;
+      |         ^
+../Core/Src/main.c:291:9: error: request for member 'Init' in something not a structure or union
+  291 |   huart2.Init.WordLength = UART_WORDLENGTH_8B;
+      |         ^
+../Core/Src/main.c:291:28: error: 'UART_WORDLENGTH_8B' undeclared (first use in this function)
+  291 |   huart2.Init.WordLength = UART_WORDLENGTH_8B;
+      |                            ^~~~~~~~~~~~~~~~~~
+../Core/Src/main.c:292:9: error: request for member 'Init' in something not a structure or union
+  292 |   huart2.Init.StopBits = UART_STOPBITS_1;
+      |         ^
+../Core/Src/main.c:292:26: error: 'UART_STOPBITS_1' undeclared (first use in this function)
+  292 |   huart2.Init.StopBits = UART_STOPBITS_1;
+      |                          ^~~~~~~~~~~~~~~
+../Core/Src/main.c:293:9: error: request for member 'Init' in something not a structure or union
+  293 |   huart2.Init.Parity = UART_PARITY_NONE;
+      |         ^
+../Core/Src/main.c:293:24: error: 'UART_PARITY_NONE' undeclared (first use in this function)
+  293 |   huart2.Init.Parity = UART_PARITY_NONE;
+      |                        ^~~~~~~~~~~~~~~~
+../Core/Src/main.c:294:9: error: request for member 'Init' in something not a structure or union
+  294 |   huart2.Init.Mode = UART_MODE_TX_RX;
+      |         ^
+../Core/Src/main.c:294:22: error: 'UART_MODE_TX_RX' undeclared (first use in this function)
+  294 |   huart2.Init.Mode = UART_MODE_TX_RX;
+      |                      ^~~~~~~~~~~~~~~
+../Core/Src/main.c:295:9: error: request for member 'Init' in something not a structure or union
+  295 |   huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+      |         ^
+../Core/Src/main.c:295:27: error: 'UART_HWCONTROL_NONE' undeclared (first use in this function)
+  295 |   huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+      |                           ^~~~~~~~~~~~~~~~~~~
+../Core/Src/main.c:296:9: error: request for member 'Init' in something not a structure or union
+  296 |   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+      |         ^
+../Core/Src/main.c:296:30: error: 'UART_OVERSAMPLING_16' undeclared (first use in this function)
+  296 |   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+      |                              ^~~~~~~~~~~~~~~~~~~~
+../Core/Src/main.c:297:7: warning: implicit declaration of function 'HAL_UART_Init'; did you mean 'HAL_DMA_Init'? [-Wimplicit-function-declaration]
+  297 |   if (HAL_UART_Init(&huart2) != HAL_OK)
+      |       ^~~~~~~~~~~~~
+      |       HAL_DMA_Init
+make: *** [Core/Src/subdir.mk:34: Core/Src/main.o] Error 1
+"make -j16 all" terminated with exit code 2. Build might be incomplete.
+
+14:24:01 Build Failed. 42 errors, 5 warnings. (took 969ms)
+
