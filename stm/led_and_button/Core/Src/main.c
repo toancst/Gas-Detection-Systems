@@ -1,150 +1,370 @@
-/* Includes ------------------------------------------------------------------*/
-#include "main.h"
+#include "stm32f4xx.h"
+#include <stdio.h>
+#include <math.h>
 
-/* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
+// --- Định nghĩa chân và ngưỡng ---
+// Chân Analog cho cảm biến MQ-2 (PA0)
+#define MQ2_PIN_PORT    GPIOA
+#define MQ2_PIN         0
 
-int main(void)
-{
-  /* Reset của tất cả các ngoại vi, khởi tạo Flash interface và Systick. */
-  HAL_Init();
+// Chân cho 3 LED
+#define LED_GREEN_PORT  GPIOA
+#define LED_GREEN_PIN   4   // LED xanh A4
+#define LED_YELLOW_PORT GPIOA
+#define LED_YELLOW_PIN  5   // LED vàng A5
+#define LED_RED_PORT    GPIOA
+#define LED_RED_PIN     6   // LED đỏ A6
 
-  /* Cấu hình System Clock */
-  SystemClock_Config();
+// Chân cho Buzzer
+#define BUZZER_PORT     GPIOA
+#define BUZZER_PIN      8   // Buzzer A8
 
-  /* Khởi tạo các ngoại vi đã cấu hình */
-  MX_GPIO_Init();
+// Các ngưỡng gas
+#define GAS_THRESHOLD_LOW   300
+#define GAS_THRESHOLD_MID   900
+#define GAS_THRESHOLD_HIGH  1600
+#define GAS_THRESHOLD_BUZZER 1200
 
-  /* Khai báo biến để lưu trạng thái nút bấm */
-  // Trạng thái ban đầu của nút là thả ra (HIGH/SET)
-  GPIO_PinState last_button1_state = GPIO_PIN_SET;
-  GPIO_PinState last_button2_state = GPIO_PIN_SET;
+// Định nghĩa cho buzzer sin wave
+#define PI 3.14159265
+#define SAMPLES 100
 
-  GPIO_PinState current_button1_state;
-  GPIO_PinState current_button2_state;
+// Biến toàn cục cho timer và LED
+volatile uint32_t timer_counter = 0;
+volatile uint32_t led_red_counter = 0;
+volatile uint8_t led_red_state = 0;
+volatile uint8_t led_red_frequency = 1;  // Tần số LED đỏ (1-10Hz)
+volatile uint16_t current_gas_value = 0;
 
+// Biến toàn cục cho buzzer sin wave
+volatile uint16_t pwm_table[SAMPLES];
+volatile uint32_t current_index = 0;
+volatile uint8_t buzzer_active = 0;
 
-  /* Vòng lặp vô hạn */
-  while (1)
-  {
-    /* --- XỬ LÝ NÚT 1 (PB0) VÀ LED 1 (PA5) --- */
+// --- Khai báo hàm ---
+void UART2_Init(void);
+void UART2_SendChar(uint8_t c);
+void UART2_SendString(char *str);
+void ADC1_Init(void);
+uint16_t ADC1_Read(void);
+void LED_Init(void);
+void TIM2_Init(void);
+void TIM1_Buzzer_Init(void);
+void LED_Control(uint16_t gasValue);
+void Buzzer_Control(uint16_t gasValue);
+void Send_System_Status(uint16_t gasValue);
+uint8_t Calculate_Red_LED_Frequency(uint16_t gasValue);
+void delay_ms(uint32_t ms);
+void Make_Triangle_Sin_Table(void);
 
-    // 1. Đọc trạng thái hiện tại của nút 1
-    current_button1_state = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0);
+// --- Hàm Main ---
+int main(void) {
+    // Khởi tạo system clock
+    SystemCoreClockUpdate();
 
-    // 2. Kiểm tra sự kiện nhấn nút (chuyển từ 1->0)
-    // Nếu hiện tại đang nhấn (RESET) và trước đó đang thả (SET)
-    if (current_button1_state == GPIO_PIN_RESET && last_button1_state == GPIO_PIN_SET)
-    {
-      // Đảo trạng thái của LED 1
-      HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+    // Khởi tạo các ngoại vi
+    UART2_Init();
+    ADC1_Init();
+    LED_Init();
+    TIM2_Init();
+    TIM1_Buzzer_Init();
+
+    char buffer[100];
+    uint16_t gasValue;
+
+    Make_Triangle_Sin_Table();
+
+    while (1) {
+        // Đọc giá trị từ cảm biến MQ-2
+        gasValue = ADC1_Read();
+        current_gas_value = gasValue;
+
+        // Điều khiển LED dựa trên giá trị gas
+        LED_Control(gasValue);
+
+        // Điều khiển Buzzer dựa trên giá trị gas
+        Buzzer_Control(gasValue);
+
+        // Gửi thông tin hệ thống qua UART
+        Send_System_Status(gasValue);
+
+        // Chờ 100ms trước khi đọc lại
+        for(volatile uint32_t i = 0; i < 420000; i++); // Delay ~100ms at 84MHz
     }
+}
 
-    // 3. Cập nhật trạng thái cũ của nút 1 cho lần lặp tiếp theo
-    last_button1_state = current_button1_state;
-
-
-    /* --- XỬ LÝ NÚT 2 (PB1) VÀ LED 2 (PA6) --- */
-
-    // 1. Đọc trạng thái hiện tại của nút 2
-    current_button2_state = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_1);
-
-    // 2. Kiểm tra sự kiện nhấn nút (chuyển từ 1->0)
-    if (current_button2_state == GPIO_PIN_RESET && last_button2_state == GPIO_PIN_SET)
-    {
-      // Đảo trạng thái của LED 2
-      HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_6);
-    }
-
-    // 3. Cập nhật trạng thái cũ của nút 2 cho lần lặp tiếp theo
-    last_button2_state = current_button2_state;
-
-
-    /* --- CHỐNG DỘI PHÍM (DEBOUNCE) --- */
-    // Thêm một khoảng trễ nhỏ để CPU không đọc tín hiệu nhiễu khi nút đang rung
-    HAL_Delay(20); // Delay 20 mili-giây
-  }
+void UART2_Init(void) {
+    RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    GPIOA->MODER |= (2 << 4) | (2 << 6);  // PA2, PA3: AF mode
+    GPIOA->AFR[0] |= (7 << 8) | (7 << 12); // AF7: UART2
+    USART2->BRR = 0x8B;  // 115200 baud (HCLK = 16MHz)
+    USART2->CR1 = USART_CR1_TE | USART_CR1_UE;
+}
+void UART2_SendChar(uint8_t c) {
+    while (!(USART2->SR & USART_SR_TXE));
+    USART2->DR = c;
 }
 
 /**
-  * @brief Cấu hình các chân GPIO
-  * @retval None
-  */
-static void MX_GPIO_Init(void)
-{
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-  /* Bật clock cho các port GPIO */
-  __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-
-  /* Cấu hình chân LED mặc định là tắt */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5|GPIO_PIN_6, GPIO_PIN_RESET);
-
-  /* Cấu hình các chân LED: PA5 và PA6 */
-  GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_6;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP; // Chế độ Output Push-Pull
-  GPIO_InitStruct.Pull = GPIO_NOPULL;         // Không dùng trở kéo
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;// Tốc độ thấp là đủ cho LED
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /* Cấu hình các chân nút bấm: PB0 và PB1 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;     // Chế độ Input
-  GPIO_InitStruct.Pull = GPIO_PULLUP;         // Dùng điện trở kéo lên nội
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+ * @brief Gửi một chuỗi ký tự qua UART2
+ */
+void UART2_SendString(char *str) {
+    while (*str) {
+        UART2_SendChar(*str++);
+    }
 }
 
+/**
+ * @brief Khởi tạo ADC1 để đọc từ kênh 0 (PA0)
+ */
+void ADC1_Init(void) {
+    // Cấp clock cho ADC1 và GPIOA
+    RCC->APB2ENR |= RCC_APB2ENR_ADC1EN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
 
-/* Các hàm SystemClock_Config, Error_Handler... được tạo tự động bởi CubeIDE */
-/* Bạn có thể để nguyên chúng */
+    // Cấu hình chân PA0 là Analog
+    MQ2_PIN_PORT->MODER |= (3 << (MQ2_PIN * 2));
 
-void SystemClock_Config(void)
-{
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+    // Cấu hình ADC
+    ADC1->SQR1 = 0; // 1 chuyển đổi
+    ADC1->SQR3 = 0; // Chuyển đổi kênh 0 (PA0)
 
-  __HAL_RCC_PWR_CLK_ENABLE();
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+    // Bật ADC
+    ADC1->CR2 |= ADC_CR2_ADON;
 
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLM = 8;
-  RCC_OscInitStruct.PLL.PLLN = 168;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-  RCC_OscInitStruct.PLL.PLLQ = 4;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
-
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    // Delay cho ADC ổn định
+    for(volatile uint32_t i = 0; i < 10000; i++);
 }
 
-void Error_Handler(void)
-{
-  __disable_irq();
-  while (1)
-  {
-  }
+/**
+ * @brief Đọc giá trị từ ADC1
+ */
+uint16_t ADC1_Read(void) {
+    // Bắt đầu chuyển đổi
+    ADC1->CR2 |= ADC_CR2_SWSTART;
+
+    // Chờ cho chuyển đổi hoàn tất
+    while (!(ADC1->SR & ADC_SR_EOC));
+
+    // Đọc và trả về giá trị
+    return (uint16_t)ADC1->DR;
 }
 
-#ifdef  USE_FULL_ASSERT
-void assert_failed(uint8_t *file, uint32_t line)
-{
+/**
+ * @brief Khởi tạo các chân GPIO cho LED
+ */
+void LED_Init(void) {
+    // Cấp clock cho GPIOA
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+
+    // Cấu hình PA4, PA5, PA6 là output
+    GPIOA->MODER &= ~((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)));
+    GPIOA->MODER |= (1 << (LED_GREEN_PIN * 2)) | (1 << (LED_YELLOW_PIN * 2)) | (1 << (LED_RED_PIN * 2));
+
+    // Cấu hình output type là push-pull
+    GPIOA->OTYPER &= ~((1 << LED_GREEN_PIN) | (1 << LED_YELLOW_PIN) | (1 << LED_RED_PIN));
+
+    // Cấu hình tốc độ cao
+    GPIOA->OSPEEDR |= ((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)));
+
+    // Không pull-up, pull-down
+    GPIOA->PUPDR &= ~((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)));
+
+    // Tắt tất cả LED ban đầu
+    GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16)) | (1 << (LED_RED_PIN + 16));
 }
-#endif
+
+/**
+ * @brief Khởi tạo Timer 2 cho LED đỏ nhấp nháy
+ */
+void TIM2_Init(void) {
+    // Bật clock cho Timer 2
+    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+
+    // Cấu hình Timer 2
+    // System clock = 84MHz, prescaler = 8400-1 -> timer clock = 10kHz
+    TIM2->PSC = 8400 - 1;  // Prescaler
+    TIM2->ARR = 10 - 1;    // Auto-reload (10ms period = 100Hz interrupt)
+
+    // Bật interrupt update
+    TIM2->DIER |= TIM_DIER_UIE;
+
+    // Bật Timer 2
+    TIM2->CR1 |= TIM_CR1_CEN;
+
+    // Cấu hình NVIC cho Timer 2
+    NVIC_EnableIRQ(TIM2_IRQn);
+    NVIC_SetPriority(TIM2_IRQn, 0);
+}
+
+/**
+ * @brief Khởi tạo TIM1 cho Buzzer PWM (PA8)
+ */
+void TIM1_Buzzer_Init(void) {
+    // Cấp clock cho TIM1 và GPIOA
+    RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+
+    // Cấu hình PA8 là alternate function (AF1 - TIM1_CH1)
+    GPIOA->MODER &= ~(3 << (BUZZER_PIN * 2));
+    GPIOA->MODER |= (2 << (BUZZER_PIN * 2));
+    GPIOA->AFR[1] &= ~(0xF << ((BUZZER_PIN - 8) * 4));
+    GPIOA->AFR[1] |= (1 << ((BUZZER_PIN - 8) * 4));
+
+    // Cấu hình prescaler và ARR cho PWM frequency ~1kHz
+    TIM1->PSC = 83;          // 84 MHz / (83+1) = 1 MHz
+    TIM1->ARR = 999;         // PWM freq = 1MHz / 1000 = 1kHz
+
+    // Cấu hình PWM mode 1 trên CH1
+    TIM1->CCMR1 |= (6 << 4); // OC1M = 110: PWM mode 1
+    TIM1->CCMR1 |= (1 << 3); // OC1PE: Preload enable
+
+    // Bật output cho CH1
+    TIM1->CCER |= TIM_CCER_CC1E;
+
+    // Bật auto-reload preload
+    TIM1->CR1 |= TIM_CR1_ARPE;
+
+    // Bật main output
+    TIM1->BDTR |= TIM_BDTR_MOE;
+
+    // Bật counter
+    TIM1->CR1 |= TIM_CR1_CEN;
+
+    // Tạo update event để load registers
+    TIM1->EGR |= TIM_EGR_UG;
+}
+
+void delay_ms(uint32_t ms) {
+    SysTick->LOAD = 16000 - 1;
+    SysTick->VAL = 0;
+    SysTick->CTRL = 5;
+    for(uint32_t i = 0; i < ms; i++) {
+        while(!(SysTick->CTRL & (1 << 16)));
+    }
+    SysTick->CTRL = 0;
+}
+
+void Make_Triangle_Sin_Table(void) {
+    for (int i = 0; i < SAMPLES; i++) {
+        float phase = (float)i / SAMPLES;
+        float triangle = phase < 0.5f ? (2.0f * phase) : (2.0f * (1.0f - phase));
+        float sin_mod = (sinf(2 * PI * phase) + 1.0f) / 2.0f;
+        pwm_table[i] = (uint16_t)(triangle * sin_mod * 999);
+    }
+}
+
+/**
+ * @brief Điều khiển Buzzer dựa trên giá trị gas
+ */
+void Buzzer_Control(uint16_t gasValue) {
+    if (gasValue >= GAS_THRESHOLD_BUZZER) {
+        buzzer_active = 1;
+        // Cập nhật PWM với giá trị từ bảng sin
+        TIM1->CCR1 = pwm_table[current_index];
+        current_index = (current_index + 1) % SAMPLES;
+        delay_ms(10);
+    } else {
+        buzzer_active = 0;
+        // Tắt buzzer
+        TIM1->CCR1 = 0;
+        current_index = 0;
+    }
+}
+
+/**
+ * @brief Tính toán tần số LED đỏ dựa trên giá trị gas
+ */
+uint8_t Calculate_Red_LED_Frequency(uint16_t gasValue) {
+    if (gasValue < GAS_THRESHOLD_MID) {
+        return 0; // Không nháy
+    } else if (gasValue >= GAS_THRESHOLD_HIGH) {
+        return 10; // 10Hz
+    } else {
+        // Chia khoảng 900-1600 thành 10 mức (1-10Hz)
+        uint16_t range = GAS_THRESHOLD_HIGH - GAS_THRESHOLD_MID; // 700
+        uint16_t step = range / 10; // 70
+        uint8_t frequency = ((gasValue - GAS_THRESHOLD_MID) / step) + 1;
+        if (frequency > 10) frequency = 10;
+        return frequency;
+    }
+}
+
+/**
+ * @brief Điều khiển LED dựa trên giá trị gas
+ */
+void LED_Control(uint16_t gasValue) {
+    // Tắt tất cả LED trước
+    GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16));
+
+    if (gasValue < GAS_THRESHOLD_LOW) {
+        // Bật LED xanh
+        GPIOA->BSRR = (1 << LED_GREEN_PIN);
+        led_red_frequency = 0;
+    } else if (gasValue < GAS_THRESHOLD_MID) {
+        // Bật LED vàng
+        GPIOA->BSRR = (1 << LED_YELLOW_PIN);
+        led_red_frequency = 0;
+    } else {
+        // Tính tần số cho LED đỏ
+        led_red_frequency = Calculate_Red_LED_Frequency(gasValue);
+    }
+}
+
+/**
+ * @brief Gửi thông tin trạng thái hệ thống qua UART
+ */
+void Send_System_Status(uint16_t gasValue) {
+    char buffer[150];
+
+    sprintf(buffer, "Gas Value: %d | ", gasValue);
+    UART2_SendString(buffer);
+
+    if (gasValue < GAS_THRESHOLD_LOW) {
+        UART2_SendString("Status: SAFE (Green LED ON) | ");
+    } else if (gasValue < GAS_THRESHOLD_MID) {
+        UART2_SendString("Status: CAUTION (Yellow LED ON) | ");
+    } else if (gasValue < GAS_THRESHOLD_BUZZER) {
+        sprintf(buffer, "Status: WARNING (Red LED: %dHz) | ", led_red_frequency);
+        UART2_SendString(buffer);
+    } else if (gasValue < GAS_THRESHOLD_HIGH) {
+        sprintf(buffer, "Status: CRITICAL (Red LED: %dHz + Buzzer ON) | ", led_red_frequency);
+        UART2_SendString(buffer);
+    } else {
+        UART2_SendString("Status: DANGER (Red LED: 10Hz + Buzzer ON) | ");
+    }
+
+    sprintf(buffer, "Time: %lu ms\r\n", timer_counter * 10);
+    UART2_SendString(buffer);
+}
+
+/**
+ * @brief Handler cho Timer 2 interrupt (được gọi mỗi 10ms)
+ */
+void TIM2_IRQHandler(void) {
+    if (TIM2->SR & TIM_SR_UIF) {
+        // Xóa interrupt flag
+        TIM2->SR &= ~TIM_SR_UIF;
+
+        timer_counter++;
+
+        // Xử lý LED đỏ nhấp nháy
+        if (led_red_frequency > 0) {
+            led_red_counter++;
+            // Tính period dựa trên tần số (Hz)
+            // Period = 100 / (2 * frequency) để có chu kỳ bật/tắt
+            uint32_t led_red_period = 50 / led_red_frequency;
+
+            if (led_red_counter >= led_red_period) {
+                // Toggle LED đỏ
+                GPIOA->ODR ^= (1 << LED_RED_PIN);
+                led_red_counter = 0;
+            }
+        } else {
+            // Tắt LED đỏ khi không cần nháy
+            GPIOA->BSRR = (1 << (LED_RED_PIN + 16));
+            led_red_counter = 0;
+        }
+    }
+}

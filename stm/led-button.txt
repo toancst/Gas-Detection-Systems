@@ -1,0 +1,91 @@
+#include "stm32f4xx.h"
+
+// Delay function
+void delay(volatile uint32_t count) {
+    while(count--);
+}
+
+// GPIO initialization function
+void GPIO_Init_Custom(void) {
+    // Enable clock for GPIOA and GPIOB
+    RCC->AHB1ENR |= (1 << 0);  // Enable GPIOA clock
+    RCC->AHB1ENR |= (1 << 1);  // Enable GPIOB clock
+
+    // Configure PA5 and PA6 as output (LEDs)
+    GPIOA->MODER &= ~(3 << (5*2));  // Clear bits for PA5
+    GPIOA->MODER |= (1 << (5*2));   // Set PA5 as output
+
+    GPIOA->MODER &= ~(3 << (6*2));  // Clear bits for PA6
+    GPIOA->MODER |= (1 << (6*2));   // Set PA6 as output
+
+    // Configure output type as push-pull for LEDs
+    GPIOA->OTYPER &= ~(1 << 5);     // PA5 push-pull
+    GPIOA->OTYPER &= ~(1 << 6);     // PA6 push-pull
+
+    // Configure output speed as medium for LEDs
+    GPIOA->OSPEEDR &= ~(3 << (5*2)); // Clear PA5 speed bits
+    GPIOA->OSPEEDR |= (1 << (5*2));  // Set PA5 medium speed
+
+    GPIOA->OSPEEDR &= ~(3 << (6*2)); // Clear PA6 speed bits
+    GPIOA->OSPEEDR |= (1 << (6*2));  // Set PA6 medium speed
+
+    // Configure pull-up/pull-down for LEDs (no pull)
+    GPIOA->PUPDR &= ~(3 << (5*2));   // No pull for PA5
+    GPIOA->PUPDR &= ~(3 << (6*2));   // No pull for PA6
+
+    // Configure PB0 and PB1 as input (Buttons)
+    GPIOB->MODER &= ~(3 << (0*2));   // Clear bits for PB0 (input mode)
+    GPIOB->MODER &= ~(3 << (1*2));   // Clear bits for PB1 (input mode)
+
+    // Configure pull-up resistors for buttons (since buttons pull to GND when pressed)
+    GPIOB->PUPDR &= ~(3 << (0*2));   // Clear PB0 pull bits
+    GPIOB->PUPDR |= (1 << (0*2));    // Set PB0 pull-up
+
+    GPIOB->PUPDR &= ~(3 << (1*2));   // Clear PB1 pull bits
+    GPIOB->PUPDR |= (1 << (1*2));    // Set PB1 pull-up
+}
+
+// Function to set LED state
+void LED_Set(uint8_t led_pin, uint8_t state) {
+    if (state) {
+        GPIOA->BSRR = (1 << led_pin);        // Set bit (turn on LED)
+    } else {
+        GPIOA->BSRR = (1 << (led_pin + 16)); // Reset bit (turn off LED)
+    }
+}
+
+// Function to read button state
+uint8_t Button_Read(uint8_t button_pin) {
+    return (GPIOB->IDR & (1 << button_pin)) ? 1 : 0;
+}
+
+int main(void) {
+    // Initialize GPIO
+    GPIO_Init_Custom();
+
+    // Turn on both LEDs initially (default state)
+    LED_Set(5, 1);  // Turn on LED A5
+    LED_Set(6, 1);  // Turn on LED A6
+
+    // Main loop
+    while(1) {
+        // Check button B0 state
+        if (Button_Read(0) == 0) {  // Button pressed (pulled to GND)
+            LED_Set(5, 0);          // Turn off LED A5
+        } else {                    // Button not pressed
+            LED_Set(5, 1);          // Turn on LED A5
+        }
+
+        // Check button B1 state
+        if (Button_Read(1) == 0) {  // Button pressed (pulled to GND)
+            LED_Set(6, 0);          // Turn off LED A6
+        } else {                    // Button not pressed
+            LED_Set(6, 1);          // Turn on LED A6
+        }
+
+        // Small delay to debounce buttons
+        delay(10000);
+    }
+
+    return 0;
+}

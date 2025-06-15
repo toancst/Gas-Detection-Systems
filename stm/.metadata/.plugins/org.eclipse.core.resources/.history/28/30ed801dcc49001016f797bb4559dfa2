@@ -1,0 +1,126 @@
+#include "stm32f4xx.h"
+
+// Khai báo các hàm cấu hình
+void RCC_Configuration(void);
+void GPIO_Configuration(void);
+void TIMER_Configuration(void);
+void NVIC_Configuration(void);
+
+// Biến đếm cho LED A5 (thay đổi tần số)
+volatile uint32_t led_a5_counter = 0;
+volatile uint32_t led_a5_period = 500;  // Bắt đầu với 2Hz (1000ms/2 = 500ms)
+volatile uint8_t frequency_step = 2;    // Tần số hiện tại (2Hz -> 10Hz)
+
+int main(void) {
+    RCC_Configuration();     // Bật xung cho các ngoại vi cần thiết
+    GPIO_Configuration();    // Cấu hình chân GPIO
+    TIMER_Configuration();   // Cấu hình Timer2 để tạo ngắt mỗi 1ms
+    NVIC_Configuration();    // Cấu hình ưu tiên và kích hoạt ngắt
+
+    while (1) {
+        // Vòng lặp vô hạn - vi điều khiển sẽ chờ ngắt xảy ra
+    }
+}
+
+// ==========================
+// 1. BẬT XUNG CHO NGOẠI VI
+// ==========================
+void RCC_Configuration(void) {
+    // Bật xung cho Timer2, GPIOA
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
+}
+
+// ==========================
+// 2. CẤU HÌNH GPIO (PA4, PA5)
+// ==========================
+void GPIO_Configuration(void) {
+    GPIO_InitTypeDef GPIO_InitStructure;
+
+    // Cấu hình chân PA4 và PA5 làm Output dạng Push-Pull
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4 | GPIO_Pin_5;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
+    GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
+    GPIO_Init(GPIOA, &GPIO_InitStructure);
+}
+
+// ==========================
+// 3. CẤU HÌNH TIMER2
+// ==========================
+void TIMER_Configuration(void) {
+    TIM_TimeBaseInitTypeDef TimeBaseStructure;
+
+    // Cấu hình Timer2 để tạo ngắt mỗi 1ms
+    // STM32F4 với clock 84MHz cho APB1 timer
+    TimeBaseStructure.TIM_Period = 1000 - 1;     // ARR = 999 (đếm 1000 xung)
+    TimeBaseStructure.TIM_Prescaler = 84 - 1;    // PSC = 83 (84MHz/84 = 1MHz)
+    TimeBaseStructure.TIM_ClockDivision = 0;
+    TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;
+
+    // Khởi tạo Timer2 với các thông số trên
+    TIM_TimeBaseInit(TIM2, &TimeBaseStructure);
+
+    // Cho phép ngắt khi Timer update (tràn)
+    TIM_ITConfig(TIM2, TIM_IT_Update, ENABLE);
+
+    // Kích hoạt Timer2
+    TIM_Cmd(TIM2, ENABLE);
+}
+
+// ==========================
+// 4. CẤU HÌNH NVIC (NGẮT)
+// ==========================
+void NVIC_Configuration(void) {
+    NVIC_InitTypeDef NVIC_InitStructure;
+
+    // Cấu hình ngắt cho Timer2
+    NVIC_InitStructure.NVIC_IRQChannel = TIM2_IRQn;
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+    NVIC_Init(&NVIC_InitStructure);
+}
+
+// ==========================
+// 5. HÀM XỬ LÝ NGẮT TIM2
+// ==========================
+void TIM2_IRQHandler(void) {
+    static uint32_t led_a4_counter = 0;      // Đếm cho LED A4 (1Hz)
+    static uint32_t frequency_change_counter = 0;  // Đếm để thay đổi tần số A5
+
+    if (TIM_GetITStatus(TIM2, TIM_IT_Update) != RESET) {
+        TIM_ClearITPendingBit(TIM2, TIM_IT_Update);  // Xóa cờ ngắt
+
+        // Xử lý LED A4 - nháy 1Hz (500ms ON, 500ms OFF)
+        led_a4_counter++;
+        if (led_a4_counter >= 500) {  // 500ms
+            led_a4_counter = 0;
+            GPIOA->ODR ^= GPIO_Pin_4;  // Đảo trạng thái PA4
+        }
+
+        // Xử lý LED A5 - nháy với tần số thay đổi
+        led_a5_counter++;
+        if (led_a5_counter >= led_a5_period) {
+            led_a5_counter = 0;
+            GPIOA->ODR ^= GPIO_Pin_5;  // Đảo trạng thái PA5
+        }
+
+        // Thay đổi tần số LED A5 mỗi 2 giây
+        frequency_change_counter++;
+        if (frequency_change_counter >= 2000) {  // 2000ms = 2 giây
+            frequency_change_counter = 0;
+
+            // Tăng tần số từ 2Hz đến 10Hz
+            frequency_step++;
+            if (frequency_step > 10) {
+                frequency_step = 2;  // Reset về 2Hz
+            }
+
+            // Tính toán period mới cho LED A5
+            // Tần số f Hz -> Period = 1000ms/(2*f) (vì đảo trạng thái 2 lần trong 1 chu kỳ)
+            led_a5_period = 500 / frequency_step;
+        }
+    }
+}

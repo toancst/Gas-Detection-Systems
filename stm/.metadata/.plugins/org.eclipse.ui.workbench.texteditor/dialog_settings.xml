@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<section name="org.eclipse.ui.texteditor.FindReplaceDialog">
+		<item key="selection" value="update_pwm()"/>
+		<item key="wrap" value="true"/>
+		<item key="casesensitive" value="false"/>
+		<item key="wholeword" value="false"/>
+		<item key="incremental" value="false"/>
+		<item key="isRegEx" value="false"/>
+		<list key="findhistory">
+			<item value="update_pwm()"/>
+			<item value="buzzer_active"/>
+			<item value="TIM1_Buzzer_Init"/>
+			<item value="Buzzer_Control"/>
+			<item value="delay"/>
+			<item value="delay_ms"/>
+			<item value="115200"/>
+			<item value="void TIM3_UP_TIM10_IRQHandler(void)"/>
+			<item value="NVIC_EnableIRQ(TIM3_UP_TIM10_IRQn); // Tên IRQ của TIM3"/>
+			<item value="TIM3_SineUpdate_Init"/>
+			<item value="NVIC_EnableIRQ"/>
+			<item value="NVIC_EnableIRQ(TIM3_UP_TIM10_IRQn);"/>
+		</list>
+		<list key="replacehistory">
+		</list>
+	</section>
+	<section name="org.eclipse.ui.texteditor.FindReplaceDialog_dialogBounds">
+		<item key="DIALOG_X_ORIGIN" value="1246"/>
+		<item key="DIALOG_Y_ORIGIN" value="261"/>
+		<item key="DIALOG_WIDTH" value="414"/>
+		<item key="DIALOG_HEIGHT" value="454"/>
+		<item key="DIALOG_FONT_NAME" value="1|Segoe UI|9.0|0|WINDOWS|1|-15|0|0|0|400|0|0|0|1|0|0|0|0|Segoe UI"/>
+	</section>
+</section>

@@ -1,0 +1,96 @@
+#include "stm32f4xx.h"
+
+// Định nghĩa địa chỉ thanh ghi
+#define RCC_AHB1ENR     (*(volatile uint32_t*)0x40023830)
+#define GPIOA_MODER     (*(volatile uint32_t*)0x40020000)
+#define GPIOA_ODR       (*(volatile uint32_t*)0x40020014)
+#define GPIOB_MODER     (*(volatile uint32_t*)0x40020400)
+#define GPIOB_IDR       (*(volatile uint32_t*)0x40020410)
+#define GPIOB_PUPDR     (*(volatile uint32_t*)0x4002040C)
+
+void delay(uint32_t time) {
+    for(uint32_t i = 0; i < time; i++) {
+        for(uint32_t j = 0; j < 1000; j++) {
+            __NOP();
+        }
+    }
+}
+
+void GPIO_Init(void) {
+    // Bật clock cho GPIOA và GPIOB
+    RCC_AHB1ENR |= (1 << 0);  // GPIOA clock enable
+    RCC_AHB1ENR |= (1 << 1);  // GPIOB clock enable
+
+    // Cấu hình PA5, PA6 làm output (LED)
+    GPIOA_MODER &= ~(0x3 << (5*2));  // Clear PA5
+    GPIOA_MODER |= (0x1 << (5*2));   // PA5 output mode
+
+    GPIOA_MODER &= ~(0x3 << (6*2));  // Clear PA6
+    GPIOA_MODER |= (0x1 << (6*2));   // PA6 output mode
+
+    // Cấu hình PB0, PB1 làm input (Button)
+    GPIOB_MODER &= ~(0x3 << (0*2));  // PB0 input mode
+    GPIOB_MODER &= ~(0x3 << (1*2));  // PB1 input mode
+
+    // Cấu hình pull-up cho PB0, PB1 (vì button khi bấm sẽ về 0)
+    GPIOB_PUPDR &= ~(0x3 << (0*2));  // Clear PB0
+    GPIOB_PUPDR |= (0x1 << (0*2));   // PB0 pull-up
+
+    GPIOB_PUPDR &= ~(0x3 << (1*2));  // Clear PB1
+    GPIOB_PUPDR |= (0x1 << (1*2));   // PB1 pull-up
+
+    // Mặc định LED sáng (set bit tương ứng)
+    GPIOA_ODR |= (1 << 5);  // LED A5 sáng
+    GPIOA_ODR |= (1 << 6);  // LED A6 sáng
+}
+
+int main(void) {
+    GPIO_Init();
+
+    uint8_t button0_prev = 1;  // Trạng thái trước của button B0
+    uint8_t button1_prev = 1;  // Trạng thái trước của button B1
+    uint8_t led5_state = 1;    // Trạng thái LED A5 (1: sáng, 0: tắt)
+    uint8_t led6_state = 1;    // Trạng thái LED A6 (1: sáng, 0: tắt)
+
+    while(1) {
+        // Đọc trạng thái button
+        uint8_t button0_current = (GPIOB_IDR >> 0) & 0x1;
+        uint8_t button1_current = (GPIOB_IDR >> 1) & 0x1;
+
+        // Kiểm tra button B0 (điều khiển LED A5)
+        if(button0_prev == 1 && button0_current == 0) {  // Phát hiện cạnh xuống
+            led5_state = !led5_state;  // Đổi trạng thái LED
+            if(led5_state) {
+                GPIOA_ODR |= (1 << 5);   // Bật LED A5
+            } else {
+                GPIOA_ODR &= ~(1 << 5);  // Tắt LED A5
+            }
+        }
+
+        // Kiểm tra button B1 (điều khiển LED A6)
+        if(button1_prev == 1 && button1_current == 0) {  // Phát hiện cạnh xuống
+            led6_state = !led6_state;  // Đổi trạng thái LED
+            if(led6_state) {
+                GPIOA_ODR |= (1 << 6);   // Bật LED A6
+            } else {
+                GPIOA_ODR &= ~(1 << 6);  // Tắt LED A6
+            }
+        }
+
+        // Lưu trạng thái button hiện tại
+        button0_prev = button0_current;
+        button1_prev = button1_current;
+
+        // Delay nhỏ để chống dội phím
+        delay(10);
+    }
+}
+
+// Hàm xử lý ngắt (nếu cần)
+void HardFault_Handler(void) {
+    while(1);
+}
+
+void SysTick_Handler(void) {
+    // Empty
+}

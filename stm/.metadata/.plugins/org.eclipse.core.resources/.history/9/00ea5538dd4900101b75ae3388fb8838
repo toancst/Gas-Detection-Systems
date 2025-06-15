@@ -1,0 +1,328 @@
+#include "stm32f4xx.h"
+#include <stdio.h>
+
+// --- ĐỊNH NGHĨA CHÂN VÀ NGƯỠNG ---
+// GPIO Ports
+#define ADC_PORT        GPIOA
+#define LED_PORT        GPIOA
+#define BUZZER_PORT     GPIOA
+#define UART_PORT       GPIOA
+
+// GPIO Pins
+#define MQ2_PIN         0   // PA0 (ADC1_IN0)
+#define LED_GREEN_PIN   4   // PA4
+#define LED_YELLOW_PIN  5   // PA5
+#define LED_RED_PIN     6   // PA6
+#define BUZZER_PIN      8   // PA8 (TIM1_CH1)
+#define UART_TX_PIN     2   // PA2 (USART2_TX)
+#define UART_RX_PIN     3   // PA3 (USART2_RX)
+
+// Ngưỡng giá trị Gas
+#define GAS_THRESHOLD_LOW       300
+#define GAS_THRESHOLD_MEDIUM    900
+#define GAS_THRESHOLD_HIGH      1200
+#define GAS_THRESHOLD_MAX       1600
+
+// --- CẤU HÌNH PWM CHO CÒI ---
+#define SINE_TABLE_SIZE 64 // Kích thước bảng sin
+#define PWM_RESOLUTION  1000 // Độ phân giải của PWM (ARR của Timer)
+
+// --- BIẾN TOÀN CỤC ---
+volatile uint16_t gas_value = 0;
+volatile uint8_t red_led_frequency = 0;  // Tần số nháy của LED đỏ (1-10Hz)
+volatile uint32_t red_led_counter = 0;   // Biến đếm cho việc nháy LED đỏ
+
+// Bảng giá trị Sin (64 điểm, giá trị từ 0 đến PWM_RESOLUTION)
+const uint16_t sine_table[SINE_TABLE_SIZE] = {
+    500, 549, 598, 646, 693, 738, 781, 821, 858, 891, 921, 946, 966, 982, 993, 999,
+    1000, 996, 987, 973, 955, 932, 905, 874, 839, 801, 760, 717, 671, 624, 575, 525,
+    475, 425, 376, 329, 283, 240, 199, 161, 126, 95, 68, 45, 27, 13, 4, 0,
+    1, 7, 18, 34, 54, 79, 109, 142, 179, 219, 262, 307, 354, 402, 451
+};
+
+// --- KHAI BÁO HÀM ---
+void SystemClock_Config(void); // Hàm cấu hình clock hệ thống (quan trọng!)
+void Delay_ms(volatile uint32_t ms);
+void GPIO_Init_All(void);
+void ADC1_Init(void);
+uint16_t ADC1_Read(void);
+void UART2_Init(void);
+void UART2_SendString(char *str);
+void TIM2_Blink_Init(void);      // Timer cho việc nháy LED
+void TIM1_PWM_Buzzer_Init(void); // Timer PWM cho còi
+void TIM3_SineUpdate_Init(void); // Timer cập nhật sóng sin cho còi
+
+
+// --- HÀM MAIN ---
+int main(void) {
+    // Cấu hình Clock hệ thống (ví dụ 84MHz)
+    // Quan trọng: Các giá trị prescaler của Timer phụ thuộc vào tần số clock này
+    // SystemInit() được gọi tự động, nhưng có thể cần cấu hình PLL thủ công.
+    // Ở đây ta giả sử SystemCoreClock đã được cập nhật đúng.
+    SystemCoreClockUpdate();
+
+    // Khởi tạo tất cả ngoại vi
+    GPIO_Init_All();
+    UART2_Init();
+    ADC1_Init();
+    TIM2_Blink_Init();      // Khởi tạo timer cho LED nháy
+    TIM1_PWM_Buzzer_Init(); // Khởi tạo PWM cho còi
+    TIM3_SineUpdate_Init(); // Khởi tạo timer cập nhật sin
+
+    char buffer[50];
+    UART2_SendString("Gas Alarm System Initialized.\r\n");
+    UART2_SendString("-----------------------------\r\n");
+
+    while (1) {
+        // 1. Đọc giá trị cảm biến gas
+        gas_value = ADC1_Read();
+
+        // 2. Gửi giá trị lên UART để debug
+        sprintf(buffer, "Gas Value: %d\r\n", gas_value);
+        UART2_SendString(buffer);
+
+        // 3. Logic điều khiển LEDs
+        if (gas_value < GAS_THRESHOLD_LOW) { // Mức an toàn
+            LED_PORT->BSRR = (1 << LED_GREEN_PIN);         // Bật LED xanh
+            LED_PORT->BSRR = (1 << (LED_YELLOW_PIN + 16)); // Tắt LED vàng
+            LED_PORT->BSRR = (1 << (LED_RED_PIN + 16));    // Tắt LED đỏ
+            red_led_frequency = 0; // Không nháy
+        }
+        else if (gas_value < GAS_THRESHOLD_MEDIUM) { // Mức cảnh báo thấp
+            LED_PORT->BSRR = (1 << (LED_GREEN_PIN + 16)); // Tắt LED xanh
+            LED_PORT->BSRR = (1 << LED_YELLOW_PIN);        // Bật LED vàng
+            LED_PORT->BSRR = (1 << (LED_RED_PIN + 16));   // Tắt LED đỏ
+            red_led_frequency = 0; // Không nháy
+        }
+        else { // Mức cảnh báo cao (gas_value >= 900)
+            LED_PORT->BSRR = (1 << (LED_GREEN_PIN + 16));  // Tắt LED xanh
+            LED_PORT->BSRR = (1 << (LED_YELLOW_PIN + 16)); // Tắt LED vàng
+            // LED đỏ sẽ được điều khiển bởi ngắt TIM2
+
+            // Tính tần số nháy cho LED đỏ
+            if (gas_value < GAS_THRESHOLD_MAX) { // 900 <= gas < 1600
+                // Nội suy tuyến tính để có tần số từ 1Hz đến 10Hz
+                // Khoảng giá trị: 1600 - 900 = 700
+                // Khoảng tần số: 10 - 1 = 9
+                red_led_frequency = 1 + (uint8_t)(( (float)(gas_value - GAS_THRESHOLD_MEDIUM) / (GAS_THRESHOLD_MAX - GAS_THRESHOLD_MEDIUM) ) * 9.0f);
+            } else { // gas_value >= 1600
+                red_led_frequency = 10; // Tần số tối đa
+            }
+        }
+
+        // 4. Logic điều khiển còi
+        if (gas_value > GAS_THRESHOLD_HIGH) {
+            // Bật còi bằng cách bật timer PWM và timer cập nhật sin
+            TIM1->CR1 |= TIM_CR1_CEN; // Bật TIM1 (PWM)
+            TIM3->CR1 |= TIM_CR1_CEN; // Bật TIM3 (Sine Update)
+        } else {
+            // Tắt còi
+            TIM1->CR1 &= ~TIM_CR1_CEN; // Tắt TIM1
+            TIM3->CR1 &= ~TIM_CR1_CEN; // Tắt TIM3
+        }
+
+        // Chờ một chút trước khi đọc lại
+        Delay_ms(200);
+    }
+}
+
+// --- CÁC HÀM KHỞI TẠO VÀ CHỨC NĂNG ---
+
+/**
+ * @brief Hàm delay đơn giản (ước tính cho 84MHz)
+ */
+void Delay_ms(volatile uint32_t ms) {
+    volatile uint32_t count = ms * 21000;
+    while(count--);
+}
+
+/**
+ * @brief Khởi tạo tất cả các chân GPIO cần thiết
+ */
+void GPIO_Init_All(void) {
+    // Bật clock cho GPIOA
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+
+    // Cấu hình chân MQ-2 (PA0) là Analog
+    ADC_PORT->MODER |= (3 << (MQ2_PIN * 2));
+
+    // Cấu hình các chân LED (PA4, PA5, PA6) là Output
+    LED_PORT->MODER &= ~( (3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)) );
+    LED_PORT->MODER |= ( (1 << (LED_GREEN_PIN * 2)) | (1 << (LED_YELLOW_PIN * 2)) | (1 << (LED_RED_PIN * 2)) );
+    // Cấu hình output type là push-pull
+    LED_PORT->OTYPER &= ~( (1 << LED_GREEN_PIN) | (1 << LED_YELLOW_PIN) | (1 << LED_RED_PIN) );
+
+    // Cấu hình chân Buzzer (PA8) là Alternate Function cho TIM1_CH1
+    BUZZER_PORT->MODER &= ~(3 << (BUZZER_PIN * 2));
+    BUZZER_PORT->MODER |= (2 << (BUZZER_PIN * 2)); // Chế độ AF
+    BUZZER_PORT->AFR[1] &= ~(0xF << ((BUZZER_PIN - 8) * 4)); // PA8-15 dùng AFR[1]
+    BUZZER_PORT->AFR[1] |= (1 << ((BUZZER_PIN - 8) * 4));  // AF1 cho TIM1
+
+    // Cấu hình chân UART (PA2, PA3) là Alternate Function
+    UART_PORT->MODER &= ~( (3 << (UART_TX_PIN * 2)) | (3 << (UART_RX_PIN * 2)) );
+    UART_PORT->MODER |= ( (2 << (UART_TX_PIN * 2)) | (2 << (UART_RX_PIN * 2)) ); // Chế độ AF
+    UART_PORT->AFR[0] &= ~( (0xF << (UART_TX_PIN * 4)) | (0xF << (UART_RX_PIN * 4)) );
+    UART_PORT->AFR[0] |= ( (7 << (UART_TX_PIN * 4)) | (7 << (UART_RX_PIN * 4)) ); // AF7 cho USART2
+
+    // Tắt hết LED ban đầu
+    LED_PORT->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16)) | (1 << (LED_RED_PIN + 16));
+}
+
+/**
+ * @brief Khởi tạo ADC1 để đọc từ kênh 0 (PA0)
+ */
+void ADC1_Init(void) {
+    RCC->APB2ENR |= RCC_APB2ENR_ADC1EN; // Cấp clock cho ADC1
+
+    ADC1->SQR1 = 0; // 1 chuyển đổi
+    ADC1->SQR3 = MQ2_PIN; // Chọn kênh 0
+
+    ADC1->CR2 |= ADC_CR2_ADON; // Bật ADC
+    Delay_ms(1); // Chờ ADC ổn định
+}
+
+/**
+ * @brief Đọc giá trị từ ADC1
+ * @return Giá trị ADC 12-bit (0-4095)
+ */
+uint16_t ADC1_Read(void) {
+    ADC1->CR2 |= ADC_CR2_SWSTART; // Bắt đầu chuyển đổi
+    while (!(ADC1->SR & ADC_SR_EOC)); // Chờ chuyển đổi hoàn tất
+    return (uint16_t)ADC1->DR; // Đọc và trả về giá trị
+}
+
+/**
+ * @brief Khởi tạo UART2 ở 115200 baud (giả sử PCLK1 = 42MHz)
+ */
+void UART2_Init(void) {
+    RCC->APB1ENR |= RCC_APB1ENR_USART2EN; // Cấp clock cho USART2
+
+    // Baud rate = f_PCLK1 / (16 * USARTDIV)
+    // 115200 = 42,000,000 / (16 * USARTDIV) => USARTDIV = 22.786
+    // Mantissa = 22, Fraction = 0.786 * 16 = 12.576 ~ 13 (0xD)
+    // BRR = (22 << 4) | 13 = 0x16D
+    USART2->BRR = 0x16D;
+
+    // Bật bộ truyền (TE) và bật USART (UE)
+    USART2->CR1 = USART_CR1_TE | USART_CR1_UE;
+}
+
+/**
+ * @brief Gửi một chuỗi ký tự qua UART2
+ */
+void UART2_SendString(char *str) {
+    while (*str) {
+        while (!(USART2->SR & USART_SR_TXE));
+        USART2->DR = *str++;
+    }
+}
+
+/**
+ * @brief Khởi tạo Timer 2 để tạo ngắt 100Hz cho việc nháy LED
+ */
+void TIM2_Blink_Init(void) {
+    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN; // Cấp clock cho TIM2
+
+    // Giả sử PCLK1 = 42MHz, Prescaler * 2 = 84MHz
+    // Timer clock = 84MHz / (8400) = 10kHz
+    TIM2->PSC = 8400 - 1;
+    // Ngắt mỗi 100Hz -> 10ms -> ARR = 10kHz / 100Hz = 100
+    TIM2->ARR = 100 - 1;
+
+    TIM2->DIER |= TIM_DIER_UIE; // Bật ngắt update
+    TIM2->CR1 |= TIM_CR1_CEN;   // Bật Timer 2
+
+    NVIC_EnableIRQ(TIM2_IRQn);
+    NVIC_SetPriority(TIM2_IRQn, 2); // Ưu tiên thấp hơn
+}
+
+/**
+ * @brief Khởi tạo TIM1_CH1 (PA8) cho PWM
+ */
+void TIM1_PWM_Buzzer_Init(void) {
+    RCC->APB2ENR |= RCC_APB2ENR_TIM1EN; // Cấp clock cho TIM1
+
+    // Giả sử PCLK2 = 84MHz
+    // Tần số PWM cao (ngoài ngưỡng nghe, ví dụ 21kHz)
+    // PWM Freq = 84MHz / ( (PSC+1) * (ARR+1) )
+    // 21kHz = 84MHz / (4 * 1000) -> PSC = 3
+    TIM1->PSC = 3;
+    TIM1->ARR = PWM_RESOLUTION - 1;
+
+    // Cấu hình Channel 1
+    TIM1->CCMR1 |= TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2; // PWM mode 1
+    TIM1->CCMR1 |= TIM_CCMR1_OC1PE; // Bật preload cho CCR1
+
+    TIM1->CCER |= TIM_CCER_CC1E; // Bật output cho channel 1
+
+    TIM1->BDTR |= TIM_BDTR_MOE; // Bật Main Output Enable (quan trọng cho TIM1/TIM8)
+
+    TIM1->CCR1 = 0; // Duty cycle ban đầu là 0
+    // Không bật Timer ở đây, bật trong main khi cần
+}
+
+/**
+ * @brief Khởi tạo TIM3 để cập nhật sóng sin cho PWM
+ */
+void TIM3_SineUpdate_Init(void) {
+    RCC->APB1ENR |= RCC_APB1ENR_TIM3EN; // Cấp clock cho TIM3
+
+    // Tần số âm thanh mong muốn, ví dụ ~440Hz (nốt La)
+    // Tần số ngắt = Tần số âm thanh * số mẫu trong bảng sin
+    // Update Freq = 440 Hz * 64 = 28160 Hz
+    // Giả sử PCLK1*2 = 84MHz. Timer clock = 84MHz / (PSC+1)
+    // ARR = Timer clock / Update Freq
+    // Chọn PSC = 9 -> Timer Clock = 84M/10 = 8.4MHz
+    // ARR = 8.4M / 28160 = 298
+    TIM3->PSC = 9;
+    TIM3->ARR = 298 - 1;
+
+    TIM3->DIER |= TIM_DIER_UIE; // Bật ngắt update
+
+    NVIC_EnableIRQ(TIM3_UP_TIM10_IRQn); // Tên IRQ của TIM3
+    NVIC_SetPriority(TIM3_UP_TIM10_IRQn, 1); // Ưu tiên cao hơn LED
+}
+
+// --- CÁC HÀM XỬ LÝ NGẮT (INTERRUPT HANDLER) ---
+
+/**
+ * @brief Handler cho TIM2 (nháy LED đỏ) - được gọi mỗi 10ms (100Hz)
+ */
+void TIM2_IRQHandler(void) {
+    if (TIM2->SR & TIM_SR_UIF) {
+        TIM2->SR &= ~TIM_SR_UIF; // Xóa cờ ngắt
+
+        if (red_led_frequency > 0) {
+            red_led_counter++;
+            // Chu kỳ = 100 / tần số (vì ngắt là 100Hz)
+            // Ví dụ: tần số 2Hz -> chu kỳ đảo trạng thái là 100/2/2 = 25
+            uint32_t toggle_period = 100 / (2 * red_led_frequency);
+            if (toggle_period == 0) toggle_period = 1;
+
+            if (red_led_counter >= toggle_period) {
+                LED_PORT->ODR ^= (1 << LED_RED_PIN); // Đảo trạng thái LED đỏ
+                red_led_counter = 0;
+            }
+        }
+    }
+}
+
+/**
+ * @brief Handler cho TIM3 (cập nhật sóng sin cho còi)
+ */
+void TIM3_UP_TIM10_IRQHandler(void) {
+    if (TIM3->SR & TIM_SR_UIF) {
+        TIM3->SR &= ~TIM_SR_UIF; // Xóa cờ ngắt
+
+        static uint8_t sine_index = 0; // Biến static để lưu vị trí trong bảng sin
+
+        // Cập nhật duty cycle của PWM (TIM1) với giá trị từ bảng sin
+        TIM1->CCR1 = sine_table[sine_index];
+
+        // Chuyển sang giá trị tiếp theo trong bảng
+        sine_index++;
+        if (sine_index >= SINE_TABLE_SIZE) {
+            sine_index = 0;
+        }
+    }
+}

@@ -1,0 +1,133 @@
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+
+int main(void)
+{
+  /* Reset của tất cả các ngoại vi, khởi tạo Flash interface và Systick. */
+  HAL_Init();
+
+  /* Cấu hình System Clock */
+  SystemClock_Config();
+
+  /* Khởi tạo các ngoại vi đã cấu hình */
+  MX_GPIO_Init();
+
+  /* --- Khai báo các biến thời gian --- */
+  // Khai báo biến để lưu mốc thời gian cuối cùng mà mỗi LED được đảo trạng thái
+  uint32_t last_toggle_time_A4 = 0;
+  uint32_t last_toggle_time_A5 = 0;
+
+  /* --- Định nghĩa khoảng thời gian đảo trạng thái (nửa chu kỳ) --- */
+  const uint32_t interval_A4 = 500; // 1Hz -> 1000ms/chu kỳ -> 500ms đảo 1 lần
+  const uint32_t interval_A5 = 50;  // 10Hz -> 100ms/chu kỳ -> 50ms đảo 1 lần
+
+
+  /* Vòng lặp vô hạn */
+  while (1)
+  {
+    // Lấy thời gian hệ thống hiện tại (số ms từ khi khởi động)
+    uint32_t current_time = HAL_GetTick();
+
+    /* --- Xử lý cho LED ở chân PA4 (1 Hz) --- */
+    if (current_time - last_toggle_time_A4 >= interval_A4)
+    {
+      // Đã đến lúc đảo trạng thái LED
+      HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_4);
+
+      // Cập nhật lại mốc thời gian cho lần kiểm tra tiếp theo
+      last_toggle_time_A4 = current_time;
+    }
+
+    /* --- Xử lý cho LED ở chân PA5 (10 Hz) --- */
+    if (current_time - last_toggle_time_A5 >= interval_A5)
+    {
+      // Đã đến lúc đảo trạng thái LED
+      HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+
+      // Cập nhật lại mốc thời gian cho lần kiểm tra tiếp theo
+      last_toggle_time_A5 = current_time;
+    }
+
+    // Vòng lặp while(1) sẽ chạy liên tục rất nhanh mà không bị hàm delay nào cản trở,
+    // cho phép kiểm tra điều kiện của cả hai LED gần như đồng thời.
+  }
+}
+
+/**
+  * @brief Cấu hình các chân GPIO
+  * @retval None
+  */
+static void MX_GPIO_Init(void)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  /* Bật clock cho port GPIOA */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+
+  /* Cấu hình chân LED mặc định là tắt */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4|GPIO_PIN_5, GPIO_PIN_RESET);
+
+  /* Cấu hình các chân LED: PA4 và PA5 */
+  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_5;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP; // Chế độ Output Push-Pull
+  GPIO_InitStruct.Pull = GPIO_NOPULL;         // Không dùng trở kéo
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;// Tốc độ thấp là đủ cho LED
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+}
+
+
+/* Các hàm SystemClock_Config, Error_Handler... được tạo tự động bởi CubeIDE */
+/* Bạn có thể để nguyên chúng */
+
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLM = 8;
+  RCC_OscInitStruct.PLL.PLLN = 168; // Tần số hệ thống 168MHz trên F4
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = 4;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+void Error_Handler(void)
+{
+  __disable_irq();
+  while (1)
+  {
+  }
+}
+
+#ifdef  USE_FULL_ASSERT
+void assert_failed(uint8_t *file, uint32_t line)
+{
+}
+#endif
