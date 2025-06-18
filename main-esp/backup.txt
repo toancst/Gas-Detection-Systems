@@ -1,0 +1,273 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include "ThingSpeak.h"
+
+// Cấu hình WiFi
+const char* ssid = "P519";
+const char* password = "deocomatkhau";
+
+// Cấu hình ThingSpeak
+const unsigned long myChannelNumber = 2983255;
+const char* myWriteAPIKey = "UDKENP5N91RRTHB5";
+const unsigned long thingSpeakDelay = 30000; // 30 giây
+
+// Cấu hình WhatsApp API
+const String phoneNumber = "84972334069";
+const String apiKey = "4495495";
+
+WiFiServer server(80);
+WiFiClient thingSpeakClient;
+
+int ppm = 0;
+bool isRunning = true;
+unsigned long lastBlinkTime = 0;
+bool ledRedState = false;
+unsigned long lastThingSpeakUpdate = 0;
+
+// Biến để theo dõi cảnh báo đã gửi
+bool alertSent800 = false;
+bool alertSent1100 = false;
+bool alertSent1300 = false;
+
+// GPIO Pins
+const int ledGreen = 26;
+const int ledYellow = 27;
+const int ledRed = 25;
+const int buzzer = 33;
+
+void sendWhatsAppMessage(String message) {
+  // URL encode the message
+  message.replace(" ", "%20");
+  message.replace("!", "%21");
+  message.replace(",", "%2C");
+  message.replace(".", "%2E");
+  
+  String url = "https://api.callmebot.com/whatsapp.php?phone=" + phoneNumber +
+               "&text=" + message + "&apikey=" + apiKey;
+
+  HTTPClient http;
+  http.begin(url);
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+
+  int httpResponseCode = http.POST("");
+
+  if (httpResponseCode == 200) {
+    Serial.println("WhatsApp message sent successfully");
+  } else {
+    Serial.println("Error sending WhatsApp message");
+    Serial.print("HTTP response code: ");
+    Serial.println(httpResponseCode);
+  }
+
+  http.end();
+}
+
+void sendToThingSpeak(float ppmValue) {
+  int responseCode = ThingSpeak.writeField(myChannelNumber, 1, ppmValue, myWriteAPIKey);
+  
+  if (responseCode == 200) {
+    Serial.println("ThingSpeak update successful. PPM: " + String(ppmValue));
+  } else {
+    Serial.println("Error updating ThingSpeak. HTTP code: " + String(responseCode));
+  }
+}
+
+void checkAlerts(int currentPpm) {
+  // Reset alerts nếu ppm giảm xuống dưới 800
+  if (currentPpm < 800) {
+    alertSent800 = false;
+    alertSent1100 = false;
+    alertSent1300 = false;
+    return;
+  }
+  
+  // Cảnh báo mức 1300 (Khẩn cấp)
+  if (currentPpm > 1300 && !alertSent1300) {
+    sendWhatsAppMessage("EMERGENCY! Dangerous smoke levels detected! FIRE MAY HAVE STARTED! Evacuate immediately and call emergency services!");
+    alertSent1300 = true;
+    alertSent1100 = true; // Đánh dấu các mức thấp hơn cũng đã gửi
+    alertSent800 = true;
+  }
+  // Cảnh báo mức 1100 (Nguy hiểm cao)
+  else if (currentPpm > 1100 && !alertSent1100) {
+    sendWhatsAppMessage("Increasing smoke levels! Fire risk is rising. Please check heat sources and prepare safety measures.");
+    alertSent1100 = true;
+    alertSent800 = true; // Đánh dấu mức thấp hơn cũng đã gửi
+  }
+  // Cảnh báo mức 800 (Nguy hiểm thấp)
+  else if (currentPpm > 800 && !alertSent800) {
+    sendWhatsAppMessage("Smoke detected! Low level, but please check immediately. Ensure no flammable objects are near the sensor.");
+    alertSent800 = true;
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(ledGreen, OUTPUT);
+  pinMode(ledYellow, OUTPUT);
+  pinMode(ledRed, OUTPUT);
+  pinMode(buzzer, OUTPUT);
+
+  // Kết nối WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println();
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  // Khởi tạo ThingSpeak
+  ThingSpeak.begin(thingSpeakClient);
+  
+  server.begin();
+  
+  Serial.println("Gas Monitoring System Started");
+  Serial.println("Features: Web Interface + ThingSpeak Logging + WhatsApp Alerts");
+}
+
+void loop() {
+  // Xử lý kết nối WiFi nếu bị mất
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.print("Reconnecting to WiFi");
+    while (WiFi.status() != WL_CONNECTED) {
+      WiFi.begin(ssid, password);
+      delay(5000);
+      Serial.print(".");
+    }
+    Serial.println("\nReconnected to WiFi");
+  }
+
+  // Xử lý web server
+  WiFiClient client = server.available();
+  
+  if (client) {
+    String request = client.readStringUntil('\r');
+    client.flush();
+
+    if (request.indexOf("/stop") != -1) isRunning = !isRunning;
+    if (request.indexOf("/reset") != -1) {
+      ppm = 0;
+      // Reset các cảnh báo khi reset
+      alertSent800 = false;
+      alertSent1100 = false;
+      alertSent1300 = false;
+    }
+
+    if (isRunning) ppm = random(0, 1601);
+
+    // Kiểm tra và gửi cảnh báo WhatsApp
+    checkAlerts(ppm);
+
+    // Điều khiển LED
+    digitalWrite(ledGreen, ppm < 300);
+    digitalWrite(ledYellow, ppm >= 300 && ppm < 900);
+
+    // Tính toán tần số nhấp nháy LED đỏ nếu ppm >= 900
+    int blinkFrequency = 0;
+    if (ppm >= 900) {
+      blinkFrequency = map(ppm, 900, 1600, 1, 10);
+      blinkFrequency = constrain(blinkFrequency, 1, 10);
+
+      unsigned long blinkInterval = 500 / blinkFrequency;
+      if (millis() - lastBlinkTime >= blinkInterval) {
+        ledRedState = !ledRedState;
+        digitalWrite(ledRed, ledRedState);
+        lastBlinkTime = millis();
+      }
+    } else {
+      digitalWrite(ledRed, LOW);
+    }
+
+    // Điều khiển buzzer nếu ppm > 1200
+    bool buzzerOn = false;
+    if (ppm > 1200) {
+      tone(buzzer, 1000);
+      buzzerOn = true;
+    } else {
+      noTone(buzzer);
+    }
+
+    // Tạo giao diện HTML
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-type:text/html");
+    client.println();
+
+    client.println("<!DOCTYPE html>");
+    client.println("<html>");
+    client.println("<head>");
+    client.println("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+    client.println("<style>");
+    client.println("body { font-family: Arial; margin: 20px; }");
+    client.println(".status { padding: 10px; margin: 5px 0; border-radius: 5px; }");
+    client.println(".safe { background-color: #d4edda; color: #155724; }");
+    client.println(".warning { background-color: #fff3cd; color: #856404; }");
+    client.println(".danger { background-color: #f8d7da; color: #721c24; }");
+    client.println("button { padding: 10px 20px; margin: 5px; font-size: 16px; }");
+    client.println("</style>");
+    client.println("</head>");
+    client.println("<body>");
+    
+    client.println("<h1>Gas Monitoring System</h1>");
+    client.println("<h3>Real-time Data + ThingSpeak + WhatsApp Alerts</h3>");
+
+    // Hiển thị trạng thái PPM với màu sắc
+    String statusClass = "safe";
+    String statusText = "SAFE";
+    if (ppm > 1300) {
+      statusClass = "danger";
+      statusText = "EMERGENCY!";
+    } else if (ppm > 1100) {
+      statusClass = "danger"; 
+      statusText = "HIGH DANGER";
+    } else if (ppm > 800) {
+      statusClass = "warning";
+      statusText = "DANGER";
+    } else if (ppm >= 300) {
+      statusClass = "warning";
+      statusText = "CAUTION";
+    }
+    
+    client.println("<div class=\"status " + statusClass + "\">");
+    client.println("<h2>Current PPM: " + String(ppm) + " - " + statusText + "</h2>");
+    client.println("</div>");
+
+    client.println("<p><strong>Green LED:</strong> " + String(ppm < 300 ? "ON" : "OFF") + "</p>");
+    client.println("<p><strong>Yellow LED:</strong> " + String((ppm >= 300 && ppm < 900) ? "ON" : "OFF") + "</p>");
+    client.println("<p><strong>Red LED:</strong> " + String(ppm >= 900 ? "BLINKING @ " + String(blinkFrequency) + " Hz" : "OFF") + "</p>");
+    client.println("<p><strong>Buzzer:</strong> " + String(buzzerOn ? "ON" : "OFF") + "</p>");
+
+    // Hiển thị trạng thái cảnh báo
+    client.println("<h3>WhatsApp Alert Status:</h3>");
+    client.println("<p>Alert Level 800+: " + String(alertSent800 ? "SENT" : "READY") + "</p>");
+    client.println("<p>Alert Level 1100+: " + String(alertSent1100 ? "SENT" : "READY") + "</p>");
+    client.println("<p>Alert Level 1300+: " + String(alertSent1300 ? "SENT" : "READY") + "</p>");
+
+    client.println("<br>");
+    client.println("<a href=\"/stop\"><button>" + String(isRunning ? "STOP" : "▶CONTINUE") + "</button></a>");
+    client.println("<a href=\"/reset\"><button>RESET</button></a>");
+
+    client.println("<br><br>");
+    client.println("<p><small>Data automatically sent to ThingSpeak every 30 seconds</small></p>");
+    client.println("<p><small>System IP: " + WiFi.localIP().toString() + "</small></p>");
+
+    client.println("</body>");
+    client.println("</html>");
+
+    delay(1);
+    client.stop();
+  }
+
+  // Gửi dữ liệu lên ThingSpeak mỗi 30 giây
+  if (millis() - lastThingSpeakUpdate > thingSpeakDelay && isRunning) {
+    sendToThingSpeak(ppm);
+    lastThingSpeakUpdate = millis();
+  }
+
+  delay(100);
+}

@@ -1,0 +1,85 @@
+#include "stm32f4xx.h"
+#include <stdio.h>
+#include <string.h>
+
+#define VREF        3.3f
+#define ADC_MAX     4095.0f
+#define PRESS_THRESHOLD 1.5f  // Nếu điện áp > 1.5V → xem như nhấn nút
+
+void delay_ms(uint32_t ms) {
+    SysTick->LOAD = 16000 - 1;
+    SysTick->VAL = 0;
+    SysTick->CTRL = 5;
+    while (ms--) {
+        while (!(SysTick->CTRL & 0x10000));
+    }
+    SysTick->CTRL = 0;
+}
+
+void UART2_Init(void) {
+    RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+
+    GPIOA->MODER |= (2 << 4) | (2 << 6);  // PA2, PA3 = alternate
+    GPIOA->AFR[0] |= (7 << 8) | (7 << 12); // AF7
+
+    USART2->BRR = 0x8B; // 115200
+    USART2->CR1 = USART_CR1_TE | USART_CR1_UE;
+}
+
+void UART2_SendChar(uint8_t c) {
+    while (!(USART2->SR & USART_SR_TXE));
+    USART2->DR = c;
+}
+
+void UART2_SendString(const char *str) {
+    while (*str) UART2_SendChar(*str++);
+}
+
+void ADC_Init(void) {
+    RCC->APB2ENR |= RCC_APB2ENR_ADC1EN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
+
+    GPIOB->MODER |= (3 << (1 * 2)) | (3 << (2 * 2)); // PB1, PB2 = analog
+
+    ADC1->SMPR2 |= (7 << (3 * 9)) | (7 << (3 * 10)); // 480 cycles
+    ADC1->CR2 |= ADC_CR2_ADON;
+}
+
+uint16_t ADC_Read(uint8_t channel) {
+    ADC1->SQR3 = channel;
+    ADC1->CR2 |= ADC_CR2_SWSTART;
+    while (!(ADC1->SR & ADC_SR_EOC));
+    return ADC1->DR;
+}
+
+float ADC_to_Voltage(uint16_t val) {
+    return (val * VREF) / ADC_MAX;
+}
+
+int main(void) {
+    UART2_Init();
+    ADC_Init();
+
+    uint8_t pb1_prev = 0, pb2_prev = 0;
+
+    while (1) {
+        float v1 = ADC_to_Voltage(ADC_Read(9));  // PB1 = ADC_IN9
+        float v2 = ADC_to_Voltage(ADC_Read(10)); // PB2 = ADC_IN10
+
+        uint8_t pb1_now = (v1 > PRESS_THRESHOLD) ? 1 : 0;
+        uint8_t pb2_now = (v2 > PRESS_THRESHOLD) ? 1 : 0;
+
+        if (pb1_now && !pb1_prev) {
+            UART2_SendString("PB1 pressed\n");
+        }
+        if (pb2_now && !pb2_prev) {
+            UART2_SendString("PB2 pressed\n");
+        }
+
+        pb1_prev = pb1_now;
+        pb2_prev = pb2_now;
+
+        delay_ms(50); // debounce delay
+    }
+}

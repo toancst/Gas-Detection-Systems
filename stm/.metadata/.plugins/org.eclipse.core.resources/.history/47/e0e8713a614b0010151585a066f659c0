@@ -1,0 +1,82 @@
+#include "stm32f4xx.h"
+#include <stdio.h>
+
+void delay_ms(uint32_t ms);
+void GPIO_Init(void);
+void GPIO_Button_Init(void);
+void UART2_Init(void);
+void UART2_SendString(char *str);
+
+int main(void) {
+    SystemCoreClockUpdate();
+    GPIO_Init();
+    GPIO_Button_Init();
+    UART2_Init();
+
+    UART2_SendString("System started\r\n");
+
+    while (1) {
+        if (GPIOB->IDR & (1 << 0)) { // Check if button B0 is pressed
+            UART2_SendString("Button B0 pressed - Resetting...\r\n");
+            delay_ms(100); // debounce delay
+            NVIC_SystemReset();
+        }
+
+        GPIOA->BSRR = (1 << 1);     // Set PA1 HIGH
+        UART2_SendString("PA1 set HIGH\r\n");
+        delay_ms(6000);             // Delay 6 seconds
+
+        GPIOA->BSRR = (1 << (1+16)); // Set PA1 LOW
+        UART2_SendString("PA1 set LOW\r\n");
+        delay_ms(1000);             // Delay 1 second
+    }
+}
+
+void GPIO_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+
+    GPIOA->MODER &= ~(3 << (1 * 2));  // Clear mode bits for PA1
+    GPIOA->MODER |= (1 << (1 * 2));   // Set PA1 as output
+    GPIOA->OTYPER &= ~(1 << 1);       // Push-pull mode
+    GPIOA->OSPEEDR |= (3 << (1 * 2)); // High-speed mode
+    GPIOA->PUPDR &= ~(3 << (1 * 2));  // No pull-up/pull-down
+}
+
+void GPIO_Button_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
+
+    GPIOB->MODER &= ~(3 << (0 * 2));   // Set PB0 as input
+    GPIOB->PUPDR |= (2 << (0 * 2));    // Pull-down resistor
+}
+
+void UART2_Init(void) {
+    RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+
+    GPIOA->MODER |= (2 << 4) | (2 << 6);
+    GPIOA->AFR[0] |= (7 << 8) | (7 << 12);
+
+    USART2->BRR = 0x8B;
+    USART2->CR1 = USART_CR1_TE | USART_CR1_UE;
+}
+
+void UART2_SendChar(uint8_t c) {
+    while (!(USART2->SR & USART_SR_TXE));
+    USART2->DR = c;
+}
+
+void UART2_SendString(char *str) {
+    while (*str) UART2_SendChar(*str++);
+}
+
+void delay_ms(uint32_t ms) {
+    SysTick->LOAD = 16000 - 1;
+    SysTick->VAL = 0;
+    SysTick->CTRL = 5;
+
+    for(uint32_t i = 0; i < ms; i++) {
+        while(!(SysTick->CTRL & (1 << 16)));
+    }
+
+    SysTick->CTRL = 0;
+}

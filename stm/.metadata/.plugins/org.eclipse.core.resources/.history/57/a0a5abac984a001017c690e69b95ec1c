@@ -1,0 +1,117 @@
+file main.c:
+#include "uart.h"
+#include "i2c.h"
+#include "lcd.h"
+#include "adc.h"
+#include "system_control.h"
+#include <stdio.h>
+#include "stm32f4xx_hal.h"
+
+void buzzer_init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    GPIOA->MODER &= ~(3 << (5 * 2));
+    GPIOA->MODER |=  (1 << (5 * 2));
+    GPIOA->OTYPER &= ~(1 << 5);
+    GPIOA->OSPEEDR |= (3 << (5 * 2));
+}
+
+void buzzer_on(void) {
+    GPIOA->BSRR = 1 << 5;
+}
+
+void buzzer_off(void) {
+    GPIOA->BSRR = 1 << 21;
+}
+
+void Timer2_Init(uint32_t frequency) {
+    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+    TIM2->CR1 = 0;
+    TIM2->PSC = 16000 - 1;
+    TIM2->ARR = (1000 / frequency) - 1;
+    TIM2->EGR = 1;
+    TIM2->SR = 0;
+    TIM2->CR1 |= 1;
+}
+
+void Timer3_Init(uint32_t freq_hz) {
+    RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
+    TIM3->CR1 = 0;
+
+    if (freq_hz == 0) {
+        TIM3->CR1 = 0; // stop timer
+        return;
+    }
+
+    TIM3->PSC = 16000 - 1;
+    TIM3->ARR = (1000 / freq_hz) - 1;
+    TIM3->EGR = 1;
+    TIM3->SR = 0;
+    TIM3->CR1 |= 1;
+}
+
+
+
+GasLevel currentLevel = GAS_SAFE;
+SystemState currentSystem = SYSTEM_ACTIVE;
+
+int main(void) {
+    uart2_init();
+    i2c1_init();
+    adc1_init();
+    buzzer_init();
+    system_gpio_init();
+    relay_init();
+    // Sử dụng ngắt ngoài thay cho polling nút
+    buttons_exti_init();
+
+    Timer2_Init(1);  // 1Hz đọc ADC
+
+    uart_send("Khoi tao hoan tat.\r\n");
+
+    if (!i2c1_check_address(0x27 << 1)) {
+        uart_send("Khong tim thay LCD I2C.\r\n");
+        while(1);
+    }
+
+    lcd_init();
+    lcd_set_cursor(0, 0);
+    lcd_puts("STM32 Gas Sensor");
+    delay_ms(1000);
+
+    static uint8_t led_flash = 0;
+
+    while (1) {
+        // KHÔNG cần polling nút bấm nữa, đã dùng ngắt ngoài
+
+        // Đọc ADC và xử lý trạng thái hệ thống
+        if (TIM2->SR & 0x01) {
+            TIM2->SR = 0;
+
+            if (currentSystem == SYSTEM_ACTIVE) {
+                uint16_t adc_val = adc1_read();
+                float ppm = adc_to_ppm(adc_val);
+                currentLevel = classify_ppm(ppm);
+
+                // Điều chỉnh nháy LED đỏ theo mức nguy hiểm
+                if (currentLevel == GAS_HIGH) {
+                    Timer3_Init(1); // nháy 1Hz
+                } else if (currentLevel == GAS_DANGEROUS) {
+                    Timer3_Init(5); // nháy 5Hz
+                } else {
+                    Timer3_Init(0); // dừng nháy
+                    GPIOB->ODR &= ~(1 << 5); // tắt LED đỏ
+                }
+
+//                if (currentLevel == GAS_DANGEROUS) {
+//                    buzzer_off();
+//                    relay_on();
+//                } else {
+//                    buzzer_on();
+//                    relay_off();
+//                }
+
+                char debug_msg[64];
+                sprintf(debug_msg, "PPM: %.2f | Level: %d\r\n", ppm, currentLevel);
+                uart_send(debug_msg);
+
+                leds_update(currentLevel, currentSystem);

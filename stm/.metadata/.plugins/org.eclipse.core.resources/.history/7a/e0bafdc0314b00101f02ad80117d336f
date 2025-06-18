@@ -1,0 +1,76 @@
+#include "stm32f4xx.h"
+
+void UART2_Init(void);
+void UART2_SendString(char *str);
+void GPIO_Init(void);
+uint8_t Read_Button(GPIO_TypeDef* port, uint16_t pin);
+void delay_ms(uint32_t ms);
+
+int main(void) {
+    SystemCoreClockUpdate();
+    UART2_Init();
+    GPIO_Init();
+
+    uint8_t prev_B0 = 0, prev_B1 = 0;
+
+    while (1) {
+        uint8_t curr_B0 = Read_Button(GPIOB, 0);
+        uint8_t curr_B1 = Read_Button(GPIOB, 1);
+
+        if (curr_B0 && !prev_B0) {
+            UART2_SendString("B0 pressed\r\n");
+        }
+
+        if (curr_B1 && !prev_B1) {
+            UART2_SendString("B1 pressed\r\n");
+        }
+
+        prev_B0 = curr_B0;
+        prev_B1 = curr_B1;
+
+        delay_ms(10);
+    }
+}
+
+void UART2_Init(void) {
+    RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+
+    GPIOA->MODER |= (2 << 4) | (2 << 6);
+    GPIOA->AFR[0] |= (7 << 8) | (7 << 12);
+
+    USART2->BRR = 0x8B;
+    USART2->CR1 = USART_CR1_TE | USART_CR1_UE;
+}
+
+void UART2_SendChar(uint8_t c) {
+    while (!(USART2->SR & USART_SR_TXE));
+    USART2->DR = c;
+}
+
+void UART2_SendString(char *str) {
+    while (*str) UART2_SendChar(*str++);
+}
+
+void GPIO_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
+
+    GPIOB->MODER &= ~((3 << (0 * 2)) | (3 << (1 * 2))); // Input mode
+    GPIOB->PUPDR |= (2 << (0 * 2)) | (2 << (1 * 2)); // Pull-down resistor
+}
+
+uint8_t Read_Button(GPIO_TypeDef* port, uint16_t pin) {
+    return (port->IDR & (1 << pin)) ? 1 : 0;
+}
+
+void delay_ms(uint32_t ms) {
+    SysTick->LOAD = 16000 - 1;
+    SysTick->VAL = 0;
+    SysTick->CTRL = 5;
+
+    for(uint32_t i = 0; i < ms; i++) {
+        while(!(SysTick->CTRL & (1 << 16)));
+    }
+
+    SysTick->CTRL = 0;
+}

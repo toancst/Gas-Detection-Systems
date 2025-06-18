@@ -1,21 +1,10 @@
-23:41:01 **** Incremental Build of configuration Debug for project led_and_button ****
+17:21:02 **** Incremental Build of configuration Debug for project led_and_button ****
 make -j16 all 
-arm-none-eabi-gcc "../Core/Src/main.c" -mcpu=cortex-m4 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F401xC -c -I../Core/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/main.d" -MT"Core/Src/main.o" --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o "Core/Src/main.o"
-../Core/Src/main.c: In function 'main':
-../Core/Src/main.c:72:10: warning: unused variable 'buffer' [-Wunused-variable]
-   72 |     char buffer[100];
-      |          ^~~~~~
-arm-none-eabi-gcc -o "led_and_button.elf" @"objects.list"   -mcpu=cortex-m4 -T"D:\prj-upload-github\nhung\Gas-Detection-Systems\stm\led_and_button\STM32F401CCUX_FLASH.ld" --specs=nosys.specs -Wl,-Map="led_and_button.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -u _scanf_float -Wl,--start-group -lc -lm -Wl,--end-group
-Finished building target: led_and_button.elf
- 
 arm-none-eabi-size  led_and_button.elf 
-arm-none-eabi-objdump -h -S led_and_button.elf  > "led_and_button.list"
    text	   data	    bss	    dec	    hex	filename
-  29620	    468	   2124	  32212	   7dd4	led_and_button.elf
+  23984	    464	   1904	  26352	   66f0	led_and_button.elf
 Finished building: default.size.stdout
  
-Finished building: led_and_button.list
- 
 
-23:41:02 Build Finished. 0 errors, 1 warnings. (took 489ms)
+17:21:02 Build Finished. 0 errors, 0 warnings. (took 138ms)
 

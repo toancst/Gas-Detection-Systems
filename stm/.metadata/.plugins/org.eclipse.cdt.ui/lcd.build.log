@@ -1,0 +1,10 @@
+16:32:11 **** Incremental Build of configuration Debug for project lcd ****
+make -j16 all 
+arm-none-eabi-size  lcd.elf 
+   text	   data	    bss	    dec	    hex	filename
+   1728	      4	   1572	   3304	    ce8	lcd.elf
+Finished building: default.size.stdout
+ 
+
+16:32:12 Build Finished. 0 errors, 0 warnings. (took 317ms)
+

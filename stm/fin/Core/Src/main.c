@@ -6,19 +6,33 @@
 #define MQ2_PIN         0
 
 #define LED_GREEN_PORT  GPIOA
-#define LED_GREEN_PIN   4   // LED xanh A4
+#define LED_GREEN_PIN   4
 #define LED_YELLOW_PORT GPIOA
-#define LED_YELLOW_PIN  5   // LED vàng A5
+#define LED_YELLOW_PIN  5
 #define LED_RED_PORT    GPIOA
-#define LED_RED_PIN     6   // LED đỏ A6
+#define LED_RED_PIN     6
+#define LED_STOP_PORT   GPIOA
+#define LED_STOP_PIN    7
+
+// Thêm định nghĩa cho relay van gas
+#define GAS_VALVE_PORT  GPIOA
+#define GAS_VALVE_PIN   1
+
+#define PB0_PORT        GPIOB
+#define PB0_PIN         0
+#define PB1_PORT        GPIOB
+#define PB1_PIN         1
 
 #define GAS_THRESHOLD_LOW   300
 #define GAS_THRESHOLD_MID   900
 #define GAS_THRESHOLD_HIGH  1600
 #define GAS_THRESHOLD_BUZZER 1200
+#define GAS_THRESHOLD_VALVE  1000  // Ngưỡng để điều khiển van gas
 
 #define PI 3.14159265
 #define SAMPLES 100
+#define VREF 3.3f
+#define ADC_MAX 4095.0f
 
 volatile uint16_t pwm_table[SAMPLES];
 volatile uint32_t current_index = 0;
@@ -27,8 +41,21 @@ volatile uint8_t buzzer_active = 0;
 volatile uint32_t timer_counter = 0;
 volatile uint32_t led_red_counter = 0;
 volatile uint8_t led_red_state = 0;
-volatile uint8_t led_red_frequency = 1;  // Tần số LED đỏ (1-10Hz)
+volatile uint8_t led_red_frequency = 1;
 volatile uint16_t current_gas_value = 0;
+
+volatile uint8_t stop_mode_enabled = 0;
+volatile uint32_t stop_mode_timer = 0;
+volatile uint8_t stop_mode_protection = 0;
+volatile uint8_t pb1_prev_state = 0;
+
+// Biến cho nút reset PB0
+volatile uint8_t pb0_prev_state = 0;
+volatile uint32_t reset_protection_timer = 0;
+volatile uint8_t reset_protection_active = 0;
+
+// Biến cho trạng thái van gas
+volatile uint8_t gas_valve_state = 0; // 0: mở, 1: đóng
 
 void UART2_Init(void);
 void UART2_SendChar(uint8_t c);
@@ -36,166 +63,307 @@ void UART2_SendString(char *str);
 void ADC1_Init(void);
 uint16_t ADC1_Read(void);
 void LED_Init(void);
+void Gas_Valve_Init(void);  // Thêm hàm khởi tạo van gas
 void TIM2_Init(void);
+void Button_Init(void);
+uint8_t Read_Button(GPIO_TypeDef* port, uint16_t pin);
 void LED_Control(uint16_t gasValue);
-void Send_System_Status(uint16_t gasValue);
+void Gas_Valve_Control(uint16_t gasValue);  // Thêm hàm điều khiển van gas
+void Send_Gas_Value(uint16_t gasValue);  // Sửa đổi hàm gửi dữ liệu
 uint8_t Calculate_Red_LED_Frequency(uint16_t gasValue);
+void Handle_PB0_Press(void);
+void Handle_PB1_Press(void);
+void Enter_Stop_Mode(void);
+void Exit_Stop_Mode(void);
+void System_Reset(void);
+
+void delay_ms(uint32_t ms);
+void make_triangle_sin_table();
+void init_pwm();
+void update_pwm();
 
 int main(void) {
     SystemCoreClockUpdate();
     UART2_Init();
     ADC1_Init();
     LED_Init();
+    Gas_Valve_Init();  // Khởi tạo van gas
+    Button_Init();
     TIM2_Init();
     init_pwm();
     make_triangle_sin_table();
 
-    char buffer[100];
+    // Khởi tạo bảo vệ reset trong 5 giây đầu
+    reset_protection_active = 1;
+    reset_protection_timer = 0;
+
     uint16_t gasValue;
 
     while (1) {
-        gasValue = ADC1_Read();
-        current_gas_value = gasValue;
-        LED_Control(gasValue);
-        Send_System_Status(gasValue);
-        if (gasValue >= GAS_THRESHOLD_BUZZER) {
+        if (!stop_mode_enabled) {
+            gasValue = ADC1_Read();
+            current_gas_value = gasValue;
+            LED_Control(gasValue);
+            Gas_Valve_Control(gasValue);  // Điều khiển van gas
+            Send_Gas_Value(gasValue);  // Chỉ gửi giá trị gas
+
+            if (gasValue >= GAS_THRESHOLD_BUZZER) {
                 buzzer_active = 1;
                 update_pwm();
-        } else {
-        	buzzer_active = 0;
-        	update_pwm();
+            } else {
+                buzzer_active = 0;
+                update_pwm();
+            }
         }
-        delay_ms(20);
+
+        Handle_PB0_Press();
+        Handle_PB1_Press();
+        delay_ms(10);
     }
 }
 
 void UART2_Init(void) {
     RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
-    GPIOA->MODER |= (2 << 4) | (2 << 6);  // PA2, PA3: AF mode
-    GPIOA->AFR[0] |= (7 << 8) | (7 << 12); // AF7: UART2
-    USART2->BRR = 0x8B;  // 115200 baud (HCLK = 16MHz)
+    GPIOA->MODER |= (2 << 4) | (2 << 6);
+    GPIOA->AFR[0] |= (7 << 8) | (7 << 12);
+    USART2->BRR = 0x8B;
     USART2->CR1 = USART_CR1_TE | USART_CR1_UE;
 }
+
 void UART2_SendChar(uint8_t c) {
     while (!(USART2->SR & USART_SR_TXE));
     USART2->DR = c;
 }
+
 void UART2_SendString(char *str) {
     while (*str) UART2_SendChar(*str++);
 }
+
 void ADC1_Init(void) {
     RCC->APB2ENR |= RCC_APB2ENR_ADC1EN;
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+
     MQ2_PIN_PORT->MODER |= (3 << (MQ2_PIN * 2));
-    ADC1->SQR1 = 0; // 1 chuyển đổi
-    ADC1->SQR3 = 0; // Chuyển đổi kênh 0 (PA0)
+
+    ADC1->SMPR2 |= (7 << (3 * 0)); // Channel 0 sampling time
+    ADC1->SQR1 = 0;
+    ADC1->SQR3 = 0;
     ADC1->CR2 |= ADC_CR2_ADON;
     for(volatile uint32_t i = 0; i < 10000; i++);
 }
 
 uint16_t ADC1_Read(void) {
+    ADC1->SQR3 = 0; // Channel 0 for MQ2 sensor
     ADC1->CR2 |= ADC_CR2_SWSTART;
     while (!(ADC1->SR & ADC_SR_EOC));
     return (uint16_t)ADC1->DR;
 }
+
+void Button_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
+
+    // Cấu hình PB0 và PB1 làm input với pull-down resistor
+    PB0_PORT->MODER &= ~((3 << (PB0_PIN * 2)) | (3 << (PB1_PIN * 2))); // Input mode
+    PB0_PORT->PUPDR |= (2 << (PB0_PIN * 2)) | (2 << (PB1_PIN * 2)); // Pull-down resistor
+}
+
+uint8_t Read_Button(GPIO_TypeDef* port, uint16_t pin) {
+    return (port->IDR & (1 << pin)) ? 1 : 0;
+}
+
 void LED_Init(void) {
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
 
-    // Cấu hình PA4, PA5, PA6 là output
-    GPIOA->MODER &= ~((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)));
-    GPIOA->MODER |= (1 << (LED_GREEN_PIN * 2)) | (1 << (LED_YELLOW_PIN * 2)) | (1 << (LED_RED_PIN * 2));
-    GPIOA->OTYPER &= ~((1 << LED_GREEN_PIN) | (1 << LED_YELLOW_PIN) | (1 << LED_RED_PIN));
-    GPIOA->OSPEEDR |= ((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)));
-    GPIOA->PUPDR &= ~((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)));
+    // Cấu hình cho LED Green, Yellow, Red và Stop
+    GPIOA->MODER &= ~((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)) | (3 << (LED_STOP_PIN * 2)));
+    GPIOA->MODER |= (1 << (LED_GREEN_PIN * 2)) | (1 << (LED_YELLOW_PIN * 2)) | (1 << (LED_RED_PIN * 2)) | (1 << (LED_STOP_PIN * 2));
+    GPIOA->OTYPER &= ~((1 << LED_GREEN_PIN) | (1 << LED_YELLOW_PIN) | (1 << LED_RED_PIN) | (1 << LED_STOP_PIN));
+    GPIOA->OSPEEDR |= ((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)) | (3 << (LED_STOP_PIN * 2)));
+    GPIOA->PUPDR &= ~((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)) | (3 << (LED_STOP_PIN * 2)));
 
     // Tắt tất cả LED ban đầu
-    GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16)) | (1 << (LED_RED_PIN + 16));
+    GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16)) | (1 << (LED_RED_PIN + 16)) | (1 << (LED_STOP_PIN + 16));
 }
+
+// Hàm khởi tạo van gas relay
+void Gas_Valve_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+
+    // Cấu hình chân A1 làm output cho relay van gas
+    GPIOA->MODER &= ~(3 << (GAS_VALVE_PIN * 2));  // Xóa bits cũ
+    GPIOA->MODER |= (1 << (GAS_VALVE_PIN * 2));   // Output mode
+    GPIOA->OTYPER &= ~(1 << GAS_VALVE_PIN);       // Push-pull
+    GPIOA->OSPEEDR |= (3 << (GAS_VALVE_PIN * 2)); // High speed
+    GPIOA->PUPDR &= ~(3 << (GAS_VALVE_PIN * 2));  // No pull-up/pull-down
+
+    // Khởi tạo van gas ở trạng thái mở (chân A1 = LOW)
+    GPIOA->BSRR = (1 << (GAS_VALVE_PIN + 16));
+    gas_valve_state = 0; // 0: mở
+}
+
 void TIM2_Init(void) {
     RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
 
-    // Cấu hình Timer 2
-    // System clock = 84MHz, prescaler = 8400-1 -> timer clock = 10kHz
-    TIM2->PSC = 8400 - 1;  // Prescaler
-    TIM2->ARR = 10 - 1;    // Auto-reload (10ms period = 100Hz interrupt)
+    TIM2->PSC = 8400 - 1;
+    TIM2->ARR = 10 - 1;
     TIM2->DIER |= TIM_DIER_UIE;
     TIM2->CR1 |= TIM_CR1_CEN;
     NVIC_EnableIRQ(TIM2_IRQn);
     NVIC_SetPriority(TIM2_IRQn, 0);
 }
+
 uint8_t Calculate_Red_LED_Frequency(uint16_t gasValue) {
     if (gasValue < GAS_THRESHOLD_MID) {
-        return 0; // Không nháy
+        return 0;
     } else if (gasValue >= GAS_THRESHOLD_HIGH) {
-        return 10; // 10Hz
+        return 10;
     } else {
-        // Chia khoảng 900-1600 thành 10 mức (1-10Hz)
-        uint16_t range = GAS_THRESHOLD_HIGH - GAS_THRESHOLD_MID; // 700
-        uint16_t step = range / 10; // 70
+        uint16_t range = GAS_THRESHOLD_HIGH - GAS_THRESHOLD_MID;
+        uint16_t step = range / 10;
         uint8_t frequency = ((gasValue - GAS_THRESHOLD_MID) / step) + 1;
         if (frequency > 10) frequency = 10;
         return frequency;
     }
 }
+
 void LED_Control(uint16_t gasValue) {
-    // Tắt tất cả LED trước
+    // Tắt LED Green và Yellow trước
     GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16));
 
     if (gasValue < GAS_THRESHOLD_LOW) {
-        // Bật LED xanh
         GPIOA->BSRR = (1 << LED_GREEN_PIN);
         led_red_frequency = 0;
     } else if (gasValue < GAS_THRESHOLD_MID) {
-        // Bật LED vàng
         GPIOA->BSRR = (1 << LED_YELLOW_PIN);
         led_red_frequency = 0;
     } else {
-        // Tính tần số cho LED đỏ
         led_red_frequency = Calculate_Red_LED_Frequency(gasValue);
     }
 }
-void Send_System_Status(uint16_t gasValue) {
-    char buffer[150];
 
-    sprintf(buffer, "Gas Value: %d | ", gasValue);
-    UART2_SendString(buffer);
-
-    if (gasValue < GAS_THRESHOLD_LOW) {
-        UART2_SendString("Status: SAFE (Green LED ON) | ");
-    } else if (gasValue < GAS_THRESHOLD_MID) {
-        UART2_SendString("Status: CAUTION (Yellow LED ON) | ");
-    } else if (gasValue < GAS_THRESHOLD_HIGH) {
-        sprintf(buffer, "Status: WARNING (Red LED: %dHz) | ", led_red_frequency);
-        UART2_SendString(buffer);
+// Hàm điều khiển van gas
+void Gas_Valve_Control(uint16_t gasValue) {
+    if (gasValue > GAS_THRESHOLD_VALVE) {
+        // Đóng van gas (chân A1 lên mức cao)
+        if (gas_valve_state == 0) {
+            GPIOA->BSRR = (1 << GAS_VALVE_PIN);
+            gas_valve_state = 1;
+        }
     } else {
-        UART2_SendString("Status: DANGER (Red LED: 10Hz) | ");
+        // Mở van gas (chân A1 xuống mức thấp)
+        if (gas_valve_state == 1) {
+            GPIOA->BSRR = (1 << (GAS_VALVE_PIN + 16));
+            gas_valve_state = 0;
+        }
     }
+}
 
-    sprintf(buffer, "Time: %lu ms\r\n", timer_counter * 10);
+// Hàm gửi chỉ giá trị gas
+void Send_Gas_Value(uint16_t gasValue) {
+    char buffer[20];
+    sprintf(buffer, "%d\r\n", gasValue);
     UART2_SendString(buffer);
 }
+
+void Handle_PB0_Press(void) {
+    uint8_t pb0_current = Read_Button(PB0_PORT, PB0_PIN);
+
+    // Kiểm tra nhấn nút PB0 (reset button)
+    if (pb0_current && !pb0_prev_state) {
+        if (!reset_protection_active) {
+            System_Reset();
+        }
+    }
+
+    pb0_prev_state = pb0_current;
+}
+
+void Handle_PB1_Press(void) {
+    uint8_t pb1_current = Read_Button(PB1_PORT, PB1_PIN);
+
+    if (pb1_current && !pb1_prev_state) {
+        if (!stop_mode_enabled) {
+            Enter_Stop_Mode();
+        } else if (!stop_mode_protection) {
+            Exit_Stop_Mode();
+        }
+    }
+
+    pb1_prev_state = pb1_current;
+}
+
+void System_Reset(void) {
+    UART2_SendString("Reset\r\n");
+    delay_ms(100);  // Đợi ngắn để thông báo được gửi
+    NVIC_SystemReset();
+}
+
+void Enter_Stop_Mode(void) {
+    stop_mode_enabled = 1;
+    stop_mode_protection = 1;
+    stop_mode_timer = 0;
+
+    UART2_SendString("Stop\r\n");
+
+    // Tắt tất cả LED trạng thái khí gas
+    GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16)) | (1 << (LED_RED_PIN + 16));
+
+    // Bật LED Stop Mode (A7)
+    GPIOA->BSRR = (1 << LED_STOP_PIN);
+
+    // Mở van gas khi vào Stop Mode để đảm bảo an toàn
+    GPIOA->BSRR = (1 << (GAS_VALVE_PIN + 16));
+    gas_valve_state = 0;
+
+    buzzer_active = 0;
+    update_pwm();
+}
+
+void Exit_Stop_Mode(void) {
+    stop_mode_enabled = 0;
+    stop_mode_protection = 0;
+    stop_mode_timer = 0;
+
+    UART2_SendString("Continue\r\n");
+
+    // Tắt LED Stop Mode (A7)
+    GPIOA->BSRR = (1 << (LED_STOP_PIN + 16));
+}
+
 void TIM2_IRQHandler(void) {
     if (TIM2->SR & TIM_SR_UIF) {
-        // Xóa interrupt flag
         TIM2->SR &= ~TIM_SR_UIF;
 
         timer_counter++;
 
-        // Xử lý LED đỏ nhấp nháy
-        if (led_red_frequency > 0) {
+        // Xử lý bảo vệ stop mode
+        if (stop_mode_protection) {
+            stop_mode_timer++;
+            if (stop_mode_timer >= 1000) {  // 10 giây
+                stop_mode_protection = 0;
+            }
+        }
+
+        // Xử lý bảo vệ reset
+        if (reset_protection_active) {
+            reset_protection_timer++;
+            if (reset_protection_timer >= 500) {  // 5 giây (500 * 10ms)
+                reset_protection_active = 0;
+            }
+        }
+
+        // Xử lý LED đỏ
+        if (!stop_mode_enabled && led_red_frequency > 0) {
             led_red_counter++;
-            // Tính period dựa trên tần số (Hz)
-            // Period = 100 / (2 * frequency) để có chu kỳ bật/tắt
             uint32_t led_red_period = 50 / led_red_frequency;
 
             if (led_red_counter >= led_red_period) {
-                // Toggle LED đỏ
                 GPIOA->ODR ^= (1 << LED_RED_PIN);
                 led_red_counter = 0;
             }
-        } else {
-            // Tắt LED đỏ khi không cần nháy
+        } else if (stop_mode_enabled) {
+            // Đảm bảo LED Red tắt khi ở Stop Mode
             GPIOA->BSRR = (1 << (LED_RED_PIN + 16));
             led_red_counter = 0;
         }
@@ -211,7 +379,6 @@ void make_triangle_sin_table() {
     }
 }
 
-// Hàm tạo độ trễ theo mili giây
 void delay_ms(uint32_t ms) {
     SysTick->LOAD = 16000 - 1;
     SysTick->VAL = 0;
@@ -222,7 +389,6 @@ void delay_ms(uint32_t ms) {
     SysTick->CTRL = 0;
 }
 
-// Hàm khởi tạo GPIOA và TIM1 để tạo PWM
 void init_pwm() {
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
     RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
@@ -246,12 +412,11 @@ void init_pwm() {
     TIM1->EGR |= TIM_EGR_UG;
 }
 
-// Hàm cập nhật giá trị PWM từ bảng điều chế
 void update_pwm() {
     if(buzzer_active == 1){
         TIM1->CCR1 = pwm_table[current_index];
         current_index = (current_index + 1) % SAMPLES;
     } else{
-    	TIM1->CCR1 = 0;
+        TIM1->CCR1 = 0;
     }
 }
