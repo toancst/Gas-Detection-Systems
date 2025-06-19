@@ -1,0 +1,151 @@
+#include "stm32f4xx.h"
+#include <stdint.h>
+#include <stdio.h>
+
+// ==== LCD I2C Bit Definitions ====
+#define SCL_PIN     6
+#define SDA_PIN     7
+#define LCD_GPIO    GPIOB
+
+#define SCL_HIGH()  (LCD_GPIO->BSRR = (1 << SCL_PIN))
+#define SCL_LOW()   (LCD_GPIO->BSRR = (1 << (SCL_PIN + 16)))
+#define SDA_HIGH()  (LCD_GPIO->BSRR = (1 << SDA_PIN))
+#define SDA_LOW()   (LCD_GPIO->BSRR = (1 << (SDA_PIN + 16)))
+
+#define LCD_I2C_ADDR 0x27  // 7-bit addr = 0x27 => 8-bit write = 0x4E  0x4E
+
+// ==== Delay ====
+void TIM1_Init(void) {
+    RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
+    TIM1->PSC = 15;
+    TIM1->ARR = 0xFFFF;
+    TIM1->CR1 |= TIM_CR1_CEN;
+}
+
+void delay_us(uint16_t us) {
+    TIM1->CNT = 0;
+    while (TIM1->CNT < us);
+}
+
+// ==== GPIO Init ====
+void I2C_GPIO_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
+
+    // Set SCL/SDA to output open-drain
+    LCD_GPIO->MODER &= ~((3 << (SCL_PIN * 2)) | (3 << (SDA_PIN * 2)));
+    LCD_GPIO->MODER |= ((1 << (SCL_PIN * 2)) | (1 << (SDA_PIN * 2)));
+
+    LCD_GPIO->OTYPER |= (1 << SCL_PIN) | (1 << SDA_PIN);
+
+    // Enable pull-up
+    LCD_GPIO->PUPDR &= ~((3 << (SCL_PIN * 2)) | (3 << (SDA_PIN * 2)));
+    LCD_GPIO->PUPDR |= ((1 << (SCL_PIN * 2)) | (1 << (SDA_PIN * 2)));
+}
+
+// ==== I2C Bit-banging ====
+void I2C_Start(void) {
+    SDA_HIGH(); SCL_HIGH(); delay_us(5);
+    SDA_LOW(); delay_us(5);
+    SCL_LOW(); delay_us(5);
+}
+
+void I2C_Stop(void) {
+    SDA_LOW(); delay_us(5);
+    SCL_HIGH(); delay_us(5);
+    SDA_HIGH(); delay_us(5);
+}
+
+uint8_t I2C_Write(uint8_t data) {
+    for (int i = 0; i < 8; i++) {
+        if (data & 0x80) SDA_HIGH(); else SDA_LOW();
+        SCL_HIGH(); delay_us(5);
+        SCL_LOW(); delay_us(5);
+        data <<= 1;
+    }
+
+    // Read ACK
+    SDA_HIGH(); // Release line
+    SCL_HIGH(); delay_us(5);
+    uint8_t ack = (LCD_GPIO->IDR & (1 << SDA_PIN)) ? 0 : 1;
+    SCL_LOW(); delay_us(5);
+    return ack;
+}
+
+// ==== LCD Low-level ====
+void LCD_WriteNibble(uint8_t nibble, uint8_t control) {
+    // Send nibble with EN=1
+    I2C_Write(nibble | control | 0x04);
+    delay_us(1);
+    // EN=0
+    I2C_Write(nibble | control);
+    delay_us(50);
+}
+
+void LCD_WriteByte(uint8_t data, uint8_t rs) {
+    uint8_t upper = data & 0xF0;
+    uint8_t lower = (data << 4) & 0xF0;
+    uint8_t ctrl = rs ? 0x01 : 0x00;  // RS + Backlight
+
+    I2C_Start();
+    I2C_Write(LCD_I2C_ADDR);  // Address
+
+    LCD_WriteNibble(upper, ctrl | 0x08);
+    LCD_WriteNibble(lower, ctrl | 0x08);
+
+    I2C_Stop();
+}
+
+void LCD_Command(uint8_t cmd) {
+    LCD_WriteByte(cmd, 0);
+    delay_us(2000);
+}
+
+void LCD_Data(uint8_t data) {
+    LCD_WriteByte(data, 1);
+    delay_us(50);
+}
+
+// ==== LCD High-level ====
+void LCD_SetCursor(uint8_t col, uint8_t row) {
+    static const uint8_t offsets[] = {0x00, 0x40, 0x14, 0x54};
+    LCD_Command(0x80 | (col + offsets[row]));
+}
+
+void LCD_Print(char *str) {
+    while (*str) LCD_Data(*str++);
+}
+
+void LCD_Init(void) {
+    I2C_GPIO_Init();
+    delay_us(50000);
+
+    I2C_Start(); I2C_Write(LCD_I2C_ADDR); I2C_Stop();  // Wake up LCD
+
+    LCD_Command(0x30); delay_us(4500);
+    LCD_Command(0x30); delay_us(150);
+    LCD_Command(0x30); delay_us(150);
+
+    LCD_Command(0x20); // 4-bit mode
+
+    LCD_Command(0x28); // 2 lines
+    LCD_Command(0x08); // Display OFF
+    LCD_Command(0x01); // Clear
+    delay_us(2000);
+    LCD_Command(0x06); // Entry mode
+    LCD_Command(0x0C); // Display ON
+}
+
+// ==== Main ====
+int main(void) {
+    SystemInit();
+    TIM1_Init();
+    LCD_Init();
+
+    while (1) {
+        LCD_SetCursor(0, 0);
+        LCD_Print("HELLO");
+        LCD_SetCursor(0, 1);
+        LCD_Print("WORLD");
+        delay_us(500000);
+    }
+}

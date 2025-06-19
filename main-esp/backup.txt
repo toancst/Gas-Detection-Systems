@@ -101,6 +101,47 @@ void checkAlerts(int currentPpm) {
   }
 }
 
+// Hàm tạo CSS tối ưu (lưu trong PROGMEM để tiết kiệm RAM)
+String getCSS() {
+  return F("*{box-sizing:border-box;margin:0;padding:0}"
+           "body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0a0a;color:#e0e0e0;padding:10px;line-height:1.4}"
+           ".container{max-width:500px;margin:0 auto;background:#1a1a1a;border-radius:12px;padding:20px;box-shadow:0 4px 20px rgba(0,0,0,0.3)}"
+           "h1{color:#00ff88;font-size:24px;margin-bottom:5px;text-align:center}"
+           "h3{color:#888;font-size:14px;margin-bottom:20px;text-align:center;font-weight:400}"
+           ".ppm-display{background:linear-gradient(135deg,#2a2a2a,#1f1f1f);border-radius:8px;padding:15px;margin:15px 0;text-align:center;border:1px solid #333}"
+           ".ppm-value{font-size:32px;font-weight:bold;margin-bottom:5px}"
+           ".ppm-status{font-size:16px;font-weight:600;text-transform:uppercase;letter-spacing:1px}"
+           ".safe{color:#00ff88;border-color:#00ff88}"
+           ".caution{color:#ffaa00;border-color:#ffaa00}"
+           ".danger{color:#ff4444;border-color:#ff4444}"
+           ".emergency{color:#ff0000;border-color:#ff0000;animation:pulse 1s infinite}"
+           "@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.7}}"
+           ".status-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:15px 0}"
+           ".status-item{background:#2a2a2a;padding:10px;border-radius:6px;text-align:center;border:1px solid #333}"
+           ".status-label{font-size:12px;color:#888;margin-bottom:3px}"
+           ".status-value{font-size:14px;font-weight:bold}"
+           ".led-on{color:#00ff88}"
+           ".led-blink{color:#ff4444;animation:blink 0.5s infinite}"
+           ".buzzer-on{color:#ff0000}"
+           "@keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0.3}}"
+           ".alert-section{margin:15px 0;padding:15px;background:#2a2a2a;border-radius:8px;border:1px solid #333}"
+           ".alert-title{color:#ffaa00;font-size:16px;margin-bottom:10px;font-weight:600}"
+           ".alert-item{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #333}"
+           ".alert-item:last-child{border-bottom:none}"
+           ".alert-sent{color:#00ff88;font-weight:bold}"
+           ".alert-ready{color:#888}"
+           ".controls{display:flex;gap:10px;margin:20px 0;justify-content:center}"
+           ".btn{padding:12px 20px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;text-align:center;transition:all 0.3s;min-width:100px}"
+           ".btn-primary{background:linear-gradient(135deg,#00ff88,#00cc6a);color:#000}"
+           ".btn-primary:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,255,136,0.3)}"
+           ".btn-danger{background:linear-gradient(135deg,#ff4444,#cc0000);color:#fff}"
+           ".btn-danger:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(255,68,68,0.3)}"
+           ".btn-secondary{background:linear-gradient(135deg,#666,#444);color:#fff}"
+           ".btn-secondary:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(102,102,102,0.3)}"
+           ".footer{margin-top:20px;padding-top:15px;border-top:1px solid #333;text-align:center}"
+           ".footer-text{font-size:12px;color:#666;margin:3px 0}");
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -193,71 +234,114 @@ void loop() {
       noTone(buzzer);
     }
 
-    // Tạo giao diện HTML
-    client.println("HTTP/1.1 200 OK");
-    client.println("Content-type:text/html");
-    client.println();
-
-    client.println("<!DOCTYPE html>");
-    client.println("<html>");
-    client.println("<head>");
-    client.println("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-    client.println("<style>");
-    client.println("body { font-family: Arial; margin: 20px; }");
-    client.println(".status { padding: 10px; margin: 5px 0; border-radius: 5px; }");
-    client.println(".safe { background-color: #d4edda; color: #155724; }");
-    client.println(".warning { background-color: #fff3cd; color: #856404; }");
-    client.println(".danger { background-color: #f8d7da; color: #721c24; }");
-    client.println("button { padding: 10px 20px; margin: 5px; font-size: 16px; }");
-    client.println("</style>");
-    client.println("</head>");
-    client.println("<body>");
-    
-    client.println("<h1>Gas Monitoring System</h1>");
-    client.println("<h3>Real-time Data + ThingSpeak + WhatsApp Alerts</h3>");
-
-    // Hiển thị trạng thái PPM với màu sắc
+    // Xác định trạng thái và class CSS
     String statusClass = "safe";
     String statusText = "SAFE";
-    if (ppm > 1300) {
-      statusClass = "danger";
-      statusText = "EMERGENCY!";
-    } else if (ppm > 1100) {
-      statusClass = "danger"; 
-      statusText = "HIGH DANGER";
-    } else if (ppm > 800) {
-      statusClass = "warning";
-      statusText = "DANGER";
-    } else if (ppm >= 300) {
-      statusClass = "warning";
-      statusText = "CAUTION";
-    }
+    String ppmClass = "safe";
     
-    client.println("<div class=\"status " + statusClass + "\">");
-    client.println("<h2>Current PPM: " + String(ppm) + " - " + statusText + "</h2>");
-    client.println("</div>");
+    if (ppm > 1300) {
+      statusClass = "emergency";
+      statusText = "EMERGENCY!";
+      ppmClass = "emergency";
+    } else if (ppm > 1100) {
+      statusClass = "danger";
+      statusText = "HIGH DANGER";
+      ppmClass = "danger";
+    } else if (ppm > 800) {
+      statusClass = "danger";
+      statusText = "DANGER";
+      ppmClass = "danger";
+    } else if (ppm >= 300) {
+      statusClass = "caution";
+      statusText = "CAUTION";
+      ppmClass = "caution";
+    }
 
-    client.println("<p><strong>Green LED:</strong> " + String(ppm < 300 ? "ON" : "OFF") + "</p>");
-    client.println("<p><strong>Yellow LED:</strong> " + String((ppm >= 300 && ppm < 900) ? "ON" : "OFF") + "</p>");
-    client.println("<p><strong>Red LED:</strong> " + String(ppm >= 900 ? "BLINKING @ " + String(blinkFrequency) + " Hz" : "OFF") + "</p>");
-    client.println("<p><strong>Buzzer:</strong> " + String(buzzerOn ? "ON" : "OFF") + "</p>");
+    // Tạo giao diện HTML tối ưu
+    client.println(F("HTTP/1.1 200 OK"));
+    client.println(F("Content-type:text/html"));
+    client.println();
 
-    // Hiển thị trạng thái cảnh báo
-    client.println("<h3>WhatsApp Alert Status:</h3>");
-    client.println("<p>Alert Level 800+: " + String(alertSent800 ? "SENT" : "READY") + "</p>");
-    client.println("<p>Alert Level 1100+: " + String(alertSent1100 ? "SENT" : "READY") + "</p>");
-    client.println("<p>Alert Level 1300+: " + String(alertSent1300 ? "SENT" : "READY") + "</p>");
+    client.println(F("<!DOCTYPE html><html><head>"));
+    client.println(F("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"));
+    client.println(F("<title>Gas Monitor Pro</title>"));
+    client.println(F("<style>"));
+    client.println(getCSS());
+    client.println(F("</style></head><body>"));
+    
+    client.println(F("<div class=\"container\">"));
+    client.println(F("<h1>GAS MONITORING SYSTEMS</h1>"));
+    client.println(F("<h3>Real-time - ThingSpeak - WhatsApp</h3>"));
 
-    client.println("<br>");
-    client.println("<a href=\"/stop\"><button>" + String(isRunning ? "STOP" : "▶CONTINUE") + "</button></a>");
-    client.println("<a href=\"/reset\"><button>RESET</button></a>");
+    // Hiển thị PPM với animation
+    client.println("<div class=\"ppm-display " + ppmClass + "\">");
+    client.println("<div class=\"ppm-value\">" + String(ppm) + " PPM</div>");
+    client.println("<div class=\"ppm-status\">" + statusText + "</div>");
+    client.println(F("</div>"));
 
-    client.println("<br><br>");
-    client.println("<p><small>Data automatically sent to ThingSpeak every 30 seconds</small></p>");
-    client.println("<p><small>System IP: " + WiFi.localIP().toString() + "</small></p>");
+    // Status Grid
+    client.println(F("<div class=\"status-grid\">"));
+    
+    client.println(F("<div class=\"status-item\">"));
+    client.println(F("<div class=\"status-label\">GREEN LED</div>"));
+    client.println("<div class=\"status-value " + String(ppm < 300 ? "led-on" : "") + "\">" + String(ppm < 300 ? "ON" : "OFF") + "</div>");
+    client.println(F("</div>"));
+    
+    client.println(F("<div class=\"status-item\">"));
+    client.println(F("<div class=\"status-label\">YELLOW LED</div>"));
+    client.println("<div class=\"status-value " + String((ppm >= 300 && ppm < 900) ? "led-on" : "") + "\">" + String((ppm >= 300 && ppm < 900) ? "ON" : "OFF") + "</div>");
+    client.println(F("</div>"));
+    
+    client.println(F("<div class=\"status-item\">"));
+    client.println(F("<div class=\"status-label\">RED LED</div>"));
+    client.println("<div class=\"status-value " + String(ppm >= 900 ? "led-blink" : "") + "\">" + String(ppm >= 900 ? "BLINK " + String(blinkFrequency) + "Hz" : "OFF") + "</div>");
+    client.println(F("</div>"));
+    
+    client.println(F("<div class=\"status-item\">"));
+    client.println(F("<div class=\"status-label\">BUZZER</div>"));
+    client.println("<div class=\"status-value " + String(buzzerOn ? "buzzer-on" : "") + "\">" + String(buzzerOn ? "ACTIVE" : "OFF") + "</div>");
+    client.println(F("</div>"));
+    
+    client.println(F("</div>"));
 
-    client.println("</body>");
-    client.println("</html>");
+    // WhatsApp Alert Status
+    client.println(F("<div class=\"alert-section\">"));
+    client.println(F("<div class=\"alert-title\">WHATSAPP ALERTS</div>"));
+    
+    client.println(F("<div class=\"alert-item\">"));
+    client.println(F("<span>Level 800+ PPM</span>"));
+    client.println("<span class=\"" + String(alertSent800 ? "alert-sent\">SENT" : "alert-ready\">READY") + "</span>");
+    client.println(F("</div>"));
+    
+    client.println(F("<div class=\"alert-item\">"));
+    client.println(F("<span>Level 1100+ PPM</span>"));
+    client.println("<span class=\"" + String(alertSent1100 ? "alert-sent\">SENT" : "alert-ready\">READY") + "</span>");
+    client.println(F("</div>"));
+    
+    client.println(F("<div class=\"alert-item\">"));
+    client.println(F("<span>Level 1300+ PPM</span>"));
+    client.println("<span class=\"" + String(alertSent1300 ? "alert-sent\">SENT" : "alert-ready\">READY") + "</span>");
+    client.println(F("</div>"));
+    
+    client.println(F("</div>"));
+
+    // Control Buttons
+    client.println(F("<div class=\"controls\">"));
+    if (isRunning) {
+      client.println(F("<a href=\"/stop\" class=\"btn btn-danger\">STOP</a>"));
+    } else {
+      client.println(F("<a href=\"/stop\" class=\"btn btn-primary\">START</a>"));
+    }
+    client.println(F("<a href=\"/reset\" class=\"btn btn-secondary\">RESET</a>"));
+    client.println(F("</div>"));
+
+    // Footer
+    client.println(F("<div class=\"footer\">"));
+    client.println(F("<div class=\"footer-text\">ThingSpeak sync: 30s</div>"));
+    client.println("<div class=\"footer-text\">IP: " + WiFi.localIP().toString() + "</div>");
+    client.println(F("</div>"));
+
+    client.println(F("</div></body></html>"));
 
     delay(1);
     client.stop();

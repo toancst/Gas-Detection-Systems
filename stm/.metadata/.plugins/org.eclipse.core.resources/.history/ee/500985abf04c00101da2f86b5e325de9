@@ -1,0 +1,587 @@
+#include "stm32f4xx.h"
+#include <stdio.h>
+#include <math.h>
+#include <string.h> // Cần cho strlen
+
+// --- CÁC ĐỊNH NGHĨA CHO CẢM BIẾN, LED, NÚT NHẤN, BUZZER, VAN GAS ---
+#define MQ2_PIN_PORT    GPIOA
+#define MQ2_PIN         0
+
+#define LED_GREEN_PORT  GPIOA
+#define LED_GREEN_PIN   4
+#define LED_YELLOW_PORT GPIOA
+#define LED_YELLOW_PIN  5
+#define LED_RED_PORT    GPIOA
+#define LED_RED_PIN     6
+#define LED_STOP_PORT   GPIOA
+#define LED_STOP_PIN    7
+
+#define GAS_VALVE_PORT  GPIOA
+#define GAS_VALVE_PIN   1
+
+#define PB0_PORT        GPIOB
+#define PB0_PIN         0
+#define PB1_PORT        GPIOB
+#define PB1_PIN         1
+
+#define GAS_THRESHOLD_LOW   300
+#define GAS_THRESHOLD_MID   900
+#define GAS_THRESHOLD_HIGH  1600
+#define GAS_THRESHOLD_BUZZER 1200
+#define GAS_THRESHOLD_VALVE  1000
+
+#define PI 3.14159265
+#define SAMPLES 100
+#define VREF 3.3f
+#define ADC_MAX 4095.0f
+
+// --- CÁC ĐỊNH NGHĨA CHO MÀN HÌNH OLED SSD1306 ---
+#define SSD1306_I2C_ADDR 0x3C
+#define SSD1306_WIDTH    128
+#define SSD1306_HEIGHT   64
+
+// --- CÁC BIẾN TOÀN CỤC ---
+// Biến cho hệ thống chính
+volatile uint16_t pwm_table[SAMPLES];
+volatile uint32_t current_index = 0;
+volatile uint8_t buzzer_active = 0;
+
+volatile uint32_t timer_counter = 0;
+volatile uint32_t led_red_counter = 0;
+volatile uint8_t led_red_state = 0;
+volatile uint8_t led_red_frequency = 1;
+volatile uint16_t current_gas_value = 0;
+
+volatile uint8_t stop_mode_enabled = 0;
+volatile uint32_t stop_mode_timer = 0;
+volatile uint8_t stop_mode_protection = 0;
+volatile uint8_t pb1_prev_state = 0;
+
+volatile uint8_t pb0_prev_state = 0;
+volatile uint32_t reset_protection_timer = 0;
+volatile uint8_t reset_protection_active = 0;
+
+volatile uint8_t gas_valve_state = 0; // 0: mở, 1: đóng
+
+// Biến cho cập nhật OLED
+volatile uint32_t oled_update_counter = 0;
+volatile uint8_t oled_update_flag = 0;
+
+// --- FONT CHỮ 5x7 CHO OLED ---
+const uint8_t font5x7[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, // Space
+    0x00, 0x00, 0x5F, 0x00, 0x00, // !
+    0x00, 0x07, 0x00, 0x07, 0x00, // "
+    0x14, 0x7F, 0x14, 0x7F, 0x14, // #
+    0x24, 0x2A, 0x7F, 0x2A, 0x12, // $
+    0x23, 0x13, 0x08, 0x64, 0x62, // %
+    0x36, 0x49, 0x55, 0x22, 0x50, // &
+    0x00, 0x05, 0x03, 0x00, 0x00, // '
+    0x00, 0x1C, 0x22, 0x41, 0x00, // (
+    0x00, 0x41, 0x22, 0x1C, 0x00, // )
+    0x14, 0x08, 0x3E, 0x08, 0x14, // *
+    0x08, 0x08, 0x3E, 0x08, 0x08, // +
+    0x00, 0x50, 0x30, 0x00, 0x00, // ,
+    0x08, 0x08, 0x08, 0x08, 0x08, // -
+    0x00, 0x60, 0x60, 0x00, 0x00, // .
+    0x20, 0x10, 0x08, 0x04, 0x02, // /
+    0x3E, 0x51, 0x49, 0x45, 0x3E, // 0
+    0x00, 0x42, 0x7F, 0x40, 0x00, // 1
+    0x42, 0x61, 0x51, 0x49, 0x46, // 2
+    0x21, 0x41, 0x45, 0x4B, 0x31, // 3
+    0x18, 0x14, 0x12, 0x7F, 0x10, // 4
+    0x27, 0x45, 0x45, 0x45, 0x39, // 5
+    0x3C, 0x4A, 0x49, 0x49, 0x30, // 6
+    0x01, 0x71, 0x09, 0x05, 0x03, // 7
+    0x36, 0x49, 0x49, 0x49, 0x36, // 8
+    0x06, 0x49, 0x49, 0x29, 0x1E, // 9
+    0x00, 0x36, 0x36, 0x00, 0x00, // :
+    0x00, 0x56, 0x36, 0x00, 0x00, // ;
+    0x08, 0x14, 0x22, 0x41, 0x00, // <
+    0x14, 0x14, 0x14, 0x14, 0x14, // =
+    0x00, 0x41, 0x22, 0x14, 0x08, // >
+    0x02, 0x01, 0x51, 0x09, 0x06, // ?
+    0x32, 0x49, 0x79, 0x41, 0x3E, // @
+    0x7E, 0x11, 0x11, 0x11, 0x7E, // A
+    0x7F, 0x49, 0x49, 0x49, 0x36, // B
+    0x3E, 0x41, 0x41, 0x41, 0x22, // C
+    0x7F, 0x41, 0x41, 0x22, 0x1C, // D
+    0x7F, 0x49, 0x49, 0x49, 0x41, // E
+    0x7F, 0x09, 0x09, 0x09, 0x01, // F
+    0x3E, 0x41, 0x49, 0x49, 0x7A, // G
+    0x7F, 0x08, 0x08, 0x08, 0x7F, // H
+    0x00, 0x41, 0x7F, 0x41, 0x00, // I
+    0x20, 0x40, 0x41, 0x3F, 0x01, // J
+    0x7F, 0x08, 0x14, 0x22, 0x41, // K
+    0x7F, 0x40, 0x40, 0x40, 0x40, // L
+    0x7F, 0x02, 0x0C, 0x02, 0x7F, // M
+    0x7F, 0x04, 0x08, 0x10, 0x7F, // N
+    0x3E, 0x41, 0x41, 0x41, 0x3E, // O
+    0x7F, 0x09, 0x09, 0x09, 0x06, // P
+    0x3E, 0x41, 0x51, 0x21, 0x5E, // Q
+    0x7F, 0x09, 0x19, 0x29, 0x46, // R
+    0x46, 0x49, 0x49, 0x49, 0x31, // S
+    0x01, 0x01, 0x7F, 0x01, 0x01, // T
+    0x3F, 0x40, 0x40, 0x40, 0x3F, // U
+    0x1F, 0x20, 0x40, 0x20, 0x1F, // V
+    0x3F, 0x40, 0x38, 0x40, 0x3F, // W
+    0x63, 0x14, 0x08, 0x14, 0x63, // X
+    0x07, 0x08, 0x70, 0x08, 0x07, // Y
+    0x61, 0x51, 0x49, 0x45, 0x43, // Z
+};
+#include "stm32f4xx.h"
+#include <stdio.h>
+#include <math.h>
+
+#define MQ2_PIN_PORT    GPIOA
+#define MQ2_PIN         0
+
+#define LED_GREEN_PORT  GPIOA
+#define LED_GREEN_PIN   4
+#define LED_YELLOW_PORT GPIOA
+#define LED_YELLOW_PIN  5
+#define LED_RED_PORT    GPIOA
+#define LED_RED_PIN     6
+#define LED_STOP_PORT   GPIOA
+#define LED_STOP_PIN    7
+
+#define GAS_VALVE_PORT  GPIOA
+#define GAS_VALVE_PIN   1
+
+#define PB0_PORT        GPIOB
+#define PB0_PIN         0
+#define PB1_PORT        GPIOB
+#define PB1_PIN         1
+
+#define GAS_THRESHOLD_LOW   300
+#define GAS_THRESHOLD_MID   900
+#define GAS_THRESHOLD_HIGH  1600
+#define GAS_THRESHOLD_BUZZER 1200
+#define GAS_THRESHOLD_VALVE  1000
+
+#define PI 3.14159265
+#define SAMPLES 100
+#define VREF 3.3f
+#define ADC_MAX 4095.0f
+
+volatile uint16_t pwm_table[SAMPLES];
+volatile uint32_t current_index = 0;
+volatile uint8_t buzzer_active = 0;
+
+volatile uint32_t timer_counter = 0;
+volatile uint32_t led_red_counter = 0;
+volatile uint8_t led_red_state = 0;
+volatile uint8_t led_red_frequency = 1;
+volatile uint16_t current_gas_value = 0;
+
+volatile uint8_t stop_mode_enabled = 0;
+volatile uint32_t stop_mode_timer = 0;
+volatile uint8_t stop_mode_protection = 0;
+volatile uint8_t pb1_prev_state = 0;
+
+volatile uint8_t pb0_prev_state = 0;
+volatile uint32_t reset_protection_timer = 0;
+volatile uint8_t reset_protection_active = 0;
+
+volatile uint8_t gas_valve_state = 0;
+
+volatile uint32_t oled_update_counter = 0;
+volatile uint8_t oled_need_update = 0;
+
+const uint8_t font5x7[][5] = {
+    {0x3E, 0x51, 0x49, 0x45, 0x3E}, // 0
+    {0x00, 0x42, 0x7F, 0x40, 0x00}, // 1
+    {0x42, 0x61, 0x51, 0x49, 0x46}, // 2
+    {0x21, 0x41, 0x45, 0x4B, 0x31}, // 3
+    {0x18, 0x14, 0x12, 0x7F, 0x10}, // 4
+    {0x27, 0x45, 0x45, 0x45, 0x39}, // 5
+    {0x3C, 0x4A, 0x49, 0x49, 0x30}, // 6
+    {0x01, 0x71, 0x09, 0x05, 0x03}, // 7
+    {0x36, 0x49, 0x49, 0x49, 0x36}, // 8
+    {0x06, 0x49, 0x49, 0x29, 0x1E}, // 9
+    {0x7C, 0x12, 0x11, 0x12, 0x7C}, // A
+    {0x7F, 0x49, 0x49, 0x49, 0x36}, // B
+    {0x3E, 0x41, 0x41, 0x41, 0x22}, // C
+    {0x7F, 0x41, 0x41, 0x22, 0x1C}, // D
+    {0x7F, 0x49, 0x49, 0x49, 0x41}, // E
+    {0x7F, 0x09, 0x09, 0x09, 0x01}, // F
+    {0x3E, 0x41, 0x49, 0x49, 0x7A}, // G
+    {0x7F, 0x08, 0x08, 0x08, 0x7F}, // H
+    {0x00, 0x41, 0x7F, 0x41, 0x00}, // I
+    {0x20, 0x40, 0x41, 0x3F, 0x01}, // J
+    {0x7F, 0x08, 0x14, 0x22, 0x41}, // K
+    {0x7F, 0x40, 0x40, 0x40, 0x40}, // L
+    {0x7F, 0x02, 0x0C, 0x02, 0x7F}, // M
+    {0x7F, 0x04, 0x08, 0x10, 0x7F}, // N
+    {0x3E, 0x41, 0x41, 0x41, 0x3E}, // O
+    {0x7F, 0x09, 0x09, 0x09, 0x06}, // P
+    {0x3E, 0x41, 0x51, 0x21, 0x5E}, // Q
+    {0x7F, 0x09, 0x19, 0x29, 0x46}, // R
+    {0x46, 0x49, 0x49, 0x49, 0x31}, // S
+    {0x01, 0x01, 0x7F, 0x01, 0x01}, // T
+    {0x3F, 0x40, 0x40, 0x40, 0x3F}, // U
+    {0x1F, 0x20, 0x40, 0x20, 0x1F}, // V
+    {0x3F, 0x40, 0x38, 0x40, 0x3F}, // W
+    {0x63, 0x14, 0x08, 0x14, 0x63}, // X
+    {0x07, 0x08, 0x70, 0x08, 0x07}, // Y
+    {0x61, 0x51, 0x49, 0x45, 0x43}, // Z
+    {0x00, 0x00, 0x00, 0x00, 0x00}, // space
+    {0x00, 0x00, 0x5F, 0x00, 0x00}, // :
+    {0x00, 0x00, 0x00, 0x00, 0x00}  // -
+};
+
+void UART2_Init(void);
+void UART2_SendChar(uint8_t c);
+void UART2_SendString(char *str);
+void ADC1_Init(void);
+uint16_t ADC1_Read(void);
+void LED_Init(void);
+void Gas_Valve_Init(void);
+void TIM2_Init(void);
+void Button_Init(void);
+uint8_t Read_Button(GPIO_TypeDef* port, uint16_t pin);
+void LED_Control(uint16_t gasValue);
+void Gas_Valve_Control(uint16_t gasValue);
+void Send_Gas_Value(uint16_t gasValue);
+uint8_t Calculate_Red_LED_Frequency(uint16_t gasValue);
+void Handle_PB0_Press(void);
+void Handle_PB1_Press(void);
+void Enter_Stop_Mode(void);
+void Exit_Stop_Mode(void);
+void System_Reset(void);
+
+void delay_ms(uint32_t ms);
+void make_triangle_sin_table();
+void init_pwm();
+void update_pwm();
+
+void I2C1_Init(void);
+void I2C_WriteByte(uint8_t address, uint8_t reg, uint8_t data);
+void SSD1306_Command(uint8_t cmd);
+void SSD1306_Data(uint8_t data);
+void SSD1306_Init(void);
+void SSD1306_Clear(void);
+void SSD1306_SetCursor(uint8_t col, uint8_t page);
+void SSD1306_PrintChar(const uint8_t *chr);
+void SSD1306_PrintString(char *str);
+void SSD1306_PrintNumber(uint16_t num);
+void SSD1306_UpdateDisplay(void);
+
+int main(void) {
+    SystemCoreClockUpdate();
+    UART2_Init();
+    ADC1_Init();
+    LED_Init();
+    Gas_Valve_Init();
+    Button_Init();
+    TIM2_Init();
+    init_pwm();
+    make_triangle_sin_table();
+
+    I2C1_Init();
+    SSD1306_Init();
+    SSD1306_Clear();
+
+    reset_protection_active = 1;
+    reset_protection_timer = 0;
+
+    uint16_t gasValue;
+
+    while (1) {
+        if (!stop_mode_enabled) {
+            gasValue = ADC1_Read();
+            current_gas_value = gasValue;
+            LED_Control(gasValue);
+            Gas_Valve_Control(gasValue);
+            Send_Gas_Value(gasValue);
+
+            if (gasValue >= GAS_THRESHOLD_BUZZER) {
+                buzzer_active = 1;
+                update_pwm();
+            } else {
+                buzzer_active = 0;
+                update_pwm();
+            }
+        }
+
+        if (oled_need_update) {
+            SSD1306_UpdateDisplay();
+            oled_need_update = 0;
+        }
+
+        Handle_PB0_Press();
+        Handle_PB1_Press();
+        delay_ms(10);
+    }
+}
+
+void UART2_Init(void) {
+    ...
+}
+
+void UART2_SendChar(uint8_t c) {
+    ...
+}
+
+void UART2_SendString(char *str) {
+    ...
+}
+
+void ADC1_Init(void) {
+    ...
+}
+
+uint16_t ADC1_Read(void) {
+    ...
+}
+
+void Button_Init(void) {
+    ...
+}
+
+uint8_t Read_Button(GPIO_TypeDef* port, uint16_t pin) {
+    ...
+}
+
+void LED_Init(void) {
+    ...
+}
+
+void Gas_Valve_Init(void) {
+    ...
+}
+
+void TIM2_Init(void) {
+    ...
+}
+
+uint8_t Calculate_Red_LED_Frequency(uint16_t gasValue) {
+    ...
+}
+
+void LED_Control(uint16_t gasValue) {
+    ...
+}
+
+void Gas_Valve_Control(uint16_t gasValue) {
+    ...
+}
+
+void Send_Gas_Value(uint16_t gasValue) {
+    ...
+}
+
+void Handle_PB0_Press(void) {
+    ...
+}
+
+void Handle_PB1_Press(void) {
+    ...
+}
+
+void System_Reset(void) {
+    ...
+}
+
+void Enter_Stop_Mode(void) {
+    ...
+}
+
+void Exit_Stop_Mode(void) {
+    ...
+}
+
+void TIM2_IRQHandler(void) {
+    if (TIM2->SR & TIM_SR_UIF) {
+        TIM2->SR &= ~TIM_SR_UIF;
+
+        timer_counter++;
+        oled_update_counter++;
+
+        if (oled_update_counter >= 50) {
+            oled_need_update = 1;
+            oled_update_counter = 0;
+        }
+
+        if (stop_mode_protection) {
+            stop_mode_timer++;
+            if (stop_mode_timer >= 1000) {
+                stop_mode_protection = 0;
+            }
+        }
+
+        if (reset_protection_active) {
+            reset_protection_timer++;
+            if (reset_protection_timer >= 500) {
+                reset_protection_active = 0;
+            }
+        }
+
+        if (!stop_mode_enabled && led_red_frequency > 0) {
+            led_red_counter++;
+            uint32_t led_red_period = 50 / led_red_frequency;
+
+            if (led_red_counter >= led_red_period) {
+                GPIOA->ODR ^= (1 << LED_RED_PIN);
+                led_red_counter = 0;
+            }
+        } else if (stop_mode_enabled) {
+            GPIOA->BSRR = (1 << (LED_RED_PIN + 16));
+            led_red_counter = 0;
+        }
+    }
+}
+
+void make_triangle_sin_table() {
+    ...
+}
+
+void delay_ms(uint32_t ms) {
+    ...
+}
+
+void init_pwm() {
+    ...
+}
+
+void update_pwm() {
+    ...
+}
+
+void I2C1_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
+    RCC->APB1ENR |= RCC_APB1ENR_I2C1EN;
+
+    GPIOB->MODER &= ~(0xF << (8 * 2));
+    GPIOB->MODER |= (0xA << (8 * 2));
+    GPIOB->OTYPER |= (0x3 << 8);
+    GPIOB->OSPEEDR |= (0xF << (8 * 2));
+    GPIOB->AFR[1] |= (0x44 << ((8 - 8) * 4));
+
+    I2C1->CR1 &= ~I2C_CR1_PE;
+    I2C1->CR2 = 16;
+    I2C1->CCR = 80;
+    I2C1->TRISE = 17;
+    I2C1->CR1 |= I2C_CR1_PE;
+}
+
+void I2C_WriteByte(uint8_t address, uint8_t reg, uint8_t data) {
+    I2C1->CR1 |= I2C_CR1_START;
+    while (!(I2C1->SR1 & I2C_SR1_SB));
+    I2C1->DR = address << 1;
+    while (!(I2C1->SR1 & I2C_SR1_ADDR));
+    (void)I2C1->SR2;
+    while (!(I2C1->SR1 & I2C_SR1_TXE));
+    I2C1->DR = reg;
+    while (!(I2C1->SR1 & I2C_SR1_TXE));
+    I2C1->DR = data;
+    while (!(I2C1->SR1 & I2C_SR1_BTF));
+    I2C1->CR1 |= I2C_CR1_STOP;
+}
+
+void SSD1306_Command(uint8_t cmd) {
+    I2C_WriteByte(0x3C, 0x00, cmd);
+}
+
+void SSD1306_Data(uint8_t data) {
+    I2C_WriteByte(0x3C, 0x40, data);
+}
+
+void SSD1306_Init(void) {
+    delay_ms(100);
+    SSD1306_Command(0xAE);
+    SSD1306_Command(0xD5); SSD1306_Command(0x80);
+    SSD1306_Command(0xA8); SSD1306_Command(0x3F);
+    SSD1306_Command(0xD3); SSD1306_Command(0x00);
+    SSD1306_Command(0x40);
+    SSD1306_Command(0x8D); SSD1306_Command(0x14);
+    SSD1306_Command(0x20); SSD1306_Command(0x00);
+    SSD1306_Command(0xA1);
+    SSD1306_Command(0xC8);
+    SSD1306_Command(0xDA); SSD1306_Command(0x12);
+    SSD1306_Command(0x81); SSD1306_Command(0xCF);
+    SSD1306_Command(0xD9); SSD1306_Command(0xF1);
+    SSD1306_Command(0xDB); SSD1306_Command(0x40);
+    SSD1306_Command(0xA4);
+    SSD1306_Command(0xA6);
+    SSD1306_Command(0xAF);
+}
+
+void SSD1306_Clear(void) {
+    for (uint8_t page = 0; page < 8; page++) {
+        SSD1306_SetCursor(0, page);
+        for (uint8_t col = 0; col < 128; col++) {
+            SSD1306_Data(0x00);
+        }
+    }
+}
+
+void SSD1306_SetCursor(uint8_t col, uint8_t page) {
+    SSD1306_Command(0xB0 + page);
+    SSD1306_Command(0x00 + (col & 0x0F));
+    SSD1306_Command(0x10 + ((col >> 4) & 0x0F));
+}
+
+void SSD1306_PrintChar(const uint8_t *chr) {
+    for (int i = 0; i < 5; i++) {
+        SSD1306_Data(chr[i]);
+    }
+    SSD1306_Data(0x00);
+}
+
+void SSD1306_PrintString(char *str) {
+    while (*str) {
+        if (*str >= '0' && *str <= '9') {
+            SSD1306_PrintChar(font5x7[*str - '0']);
+        } else if (*str >= 'A' && *str <= 'Z') {
+            SSD1306_PrintChar(font5x7[*str - 'A' + 10]);
+        } else if (*str == ' ') {
+            SSD1306_PrintChar(font5x7[36]);
+        } else if (*str == ':') {
+            SSD1306_PrintChar(font5x7[37]);
+        } else if (*str == '-') {
+            SSD1306_PrintChar(font5x7[38]);
+        }
+        str++;
+    }
+}
+
+void SSD1306_PrintNumber(uint16_t num) {
+    char buffer[6];
+    sprintf(buffer, "%d", num);
+    SSD1306_PrintString(buffer);
+}
+
+void SSD1306_UpdateDisplay(void) {
+    SSD1306_Clear();
+
+    SSD1306_SetCursor(0, 0);
+    SSD1306_PrintString("GAS:");
+    SSD1306_PrintNumber(current_gas_value);
+
+    SSD1306_SetCursor(0, 2);
+    SSD1306_PrintString("SYS:");
+    if (stop_mode_enabled) {
+        SSD1306_PrintString("STOPPED");
+    } else {
+        SSD1306_PrintString("RUNNING");
+    }
+
+    SSD1306_SetCursor(0, 4);
+    SSD1306_PrintString("WARN:");
+    if (current_gas_value < GAS_THRESHOLD_LOW) {
+        SSD1306_PrintString("LOW");
+    } else if (current_gas_value < GAS_THRESHOLD_MID) {
+        SSD1306_PrintString("MID");
+    } else {
+        SSD1306_PrintString("HIGH");
+    }
+
+    SSD1306_SetCursor(0, 6);
+    SSD1306_PrintString("VALVE:");
+    if (gas_valve_state == 0) {
+        SSD1306_PrintString("OPEN");
+    } else {
+        SSD1306_PrintString("CLOSE");
+    }
+}

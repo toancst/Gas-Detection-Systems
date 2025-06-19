@@ -1,13 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <section name="Workbench">
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog">
-		<item key="selection" value=""/>
+		<item key="selection" value="MID"/>
 		<item key="wrap" value="true"/>
 		<item key="casesensitive" value="false"/>
 		<item key="wholeword" value="false"/>
 		<item key="incremental" value="false"/>
 		<item key="isRegEx" value="false"/>
 		<list key="findhistory">
+			<item value="mid"/>
+			<item value="if (reset_protection_timer &gt;= 500"/>
+			<item value="if (stop_mode_timer &gt;= 1000)"/>
+			<item value="Send_Gas_Value"/>
+			<item value="Read_Button"/>
+			<item value="value"/>
 			<item value="button"/>
 			<item value="update_pwm()"/>
 			<item value="buzzer_active"/>
@@ -17,10 +23,6 @@
 			<item value="delay_ms"/>
 			<item value="115200"/>
 			<item value="void TIM3_UP_TIM10_IRQHandler(void)"/>
-			<item value="NVIC_EnableIRQ(TIM3_UP_TIM10_IRQn); // Tên IRQ của TIM3"/>
-			<item value="TIM3_SineUpdate_Init"/>
-			<item value="NVIC_EnableIRQ"/>
-			<item value="NVIC_EnableIRQ(TIM3_UP_TIM10_IRQn);"/>
 		</list>
 		<list key="replacehistory">
 		</list>

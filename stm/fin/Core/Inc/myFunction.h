@@ -1,0 +1,223 @@
+void UART2_Init(void) {
+    RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    GPIOA->MODER |= (2 << 4) | (2 << 6);
+    GPIOA->AFR[0] |= (7 << 8) | (7 << 12);
+    USART2->BRR = 0x8B;
+    USART2->CR1 = USART_CR1_TE | USART_CR1_UE;
+}
+
+void UART2_SendChar(uint8_t c) {
+    while (!(USART2->SR & USART_SR_TXE));
+    USART2->DR = c;
+}
+
+void UART2_SendString(char *str) {
+    while (*str) UART2_SendChar(*str++);
+}
+
+void ADC1_Init(void) {
+    RCC->APB2ENR |= RCC_APB2ENR_ADC1EN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    MQ2_PIN_PORT->MODER |= (3 << (MQ2_PIN * 2));
+    ADC1->SMPR2 |= (7 << (3 * 0));
+    ADC1->SQR1 = 0;
+    ADC1->SQR3 = 0;
+    ADC1->CR2 |= ADC_CR2_ADON;
+    for(volatile uint32_t i = 0; i < 10000; i++);
+}
+
+uint16_t ADC1_Read(void) {
+    ADC1->SQR3 = 0;
+    ADC1->CR2 |= ADC_CR2_SWSTART;
+    while (!(ADC1->SR & ADC_SR_EOC));
+    return (uint16_t)ADC1->DR;
+}
+
+void Button_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
+    PB0_PORT->MODER &= ~((3 << (PB0_PIN * 2)) | (3 << (PB1_PIN * 2)));
+    PB0_PORT->PUPDR |= (2 << (PB0_PIN * 2)) | (2 << (PB1_PIN * 2));
+}
+
+uint8_t Read_Button(GPIO_TypeDef* port, uint16_t pin) {
+    return (port->IDR & (1 << pin)) ? 1 : 0;
+}
+
+void LED_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    GPIOA->MODER &= ~((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)) | (3 << (LED_STOP_PIN * 2)));
+    GPIOA->MODER |= (1 << (LED_GREEN_PIN * 2)) | (1 << (LED_YELLOW_PIN * 2)) | (1 << (LED_RED_PIN * 2)) | (1 << (LED_STOP_PIN * 2));
+    GPIOA->OTYPER &= ~((1 << LED_GREEN_PIN) | (1 << LED_YELLOW_PIN) | (1 << LED_RED_PIN) | (1 << LED_STOP_PIN));
+    GPIOA->OSPEEDR |= ((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)) | (3 << (LED_STOP_PIN * 2)));
+    GPIOA->PUPDR &= ~((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)) | (3 << (LED_STOP_PIN * 2)));
+    GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16)) | (1 << (LED_RED_PIN + 16)) | (1 << (LED_STOP_PIN + 16));
+}
+
+void Gas_Valve_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    GPIOA->MODER &= ~(3 << (GAS_VALVE_PIN * 2));
+    GPIOA->MODER |= (1 << (GAS_VALVE_PIN * 2));
+    GPIOA->OTYPER &= ~(1 << GAS_VALVE_PIN);
+    GPIOA->OSPEEDR |= (3 << (GAS_VALVE_PIN * 2));
+    GPIOA->PUPDR &= ~(3 << (GAS_VALVE_PIN * 2));
+    GPIOA->BSRR = (1 << (GAS_VALVE_PIN + 16));
+    gas_valve_state = 0;
+}
+
+void TIM2_Init(void) {
+    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+    TIM2->PSC = 8400 - 1; // 16MHz/8400 = 10kHz
+    TIM2->ARR = 100 - 1;   // 100/10kHz = 10ms
+    TIM2->DIER |= TIM_DIER_UIE;
+    TIM2->CR1 |= TIM_CR1_CEN;
+    NVIC_EnableIRQ(TIM2_IRQn);
+    NVIC_SetPriority(TIM2_IRQn, 0);
+}
+
+uint8_t Calculate_Red_LED_Frequency(uint16_t gasValue) {
+    if (gasValue < GAS_THRESHOLD_MID) {
+        return 0;
+    } else if (gasValue >= GAS_THRESHOLD_HIGH) {
+        return 10;
+    } else {
+        uint16_t range = GAS_THRESHOLD_HIGH - GAS_THRESHOLD_MID;
+        uint16_t step = range / 10;
+        uint8_t frequency = ((gasValue - GAS_THRESHOLD_MID) / step) + 1;
+        if (frequency > 10) frequency = 10;
+        return frequency;
+    }
+}
+
+void LED_Control(uint16_t gasValue) {
+    GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16));
+    if (gasValue < GAS_THRESHOLD_LOW) {
+        GPIOA->BSRR = (1 << LED_GREEN_PIN);
+        led_red_frequency = 0;
+        GPIOA->BSRR = (1 << (LED_RED_PIN + 16)); // Tắt hẳn LED đỏ
+    } else if (gasValue < GAS_THRESHOLD_MID) {
+        GPIOA->BSRR = (1 << LED_YELLOW_PIN);
+        led_red_frequency = 0;
+        GPIOA->BSRR = (1 << (LED_RED_PIN + 16)); // Tắt hẳn LED đỏ
+    } else {
+        led_red_frequency = Calculate_Red_LED_Frequency(gasValue);
+    }
+}
+
+void Gas_Valve_Control(uint16_t gasValue) {
+    if (gasValue > GAS_THRESHOLD_VALVE) {
+        if (gas_valve_state == 0) {
+            GPIOA->BSRR = (1 << GAS_VALVE_PIN);
+            gas_valve_state = 1;
+        }
+    } else {
+        if (gas_valve_state == 1) {
+            GPIOA->BSRR = (1 << (GAS_VALVE_PIN + 16));
+            gas_valve_state = 0;
+        }
+    }
+}
+
+void Send_Gas_Value(uint16_t gasValue) {
+    char buffer[20];
+    sprintf(buffer, "Gas: %d\r\n", gasValue);
+    UART2_SendString(buffer);
+}
+
+void Handle_PB0_Press(void) {
+    uint8_t pb0_current = Read_Button(PB0_PORT, PB0_PIN);
+    if (pb0_current && !pb0_prev_state) {
+        if (!reset_protection_active) {
+            System_Reset();
+        }
+    }
+    pb0_prev_state = pb0_current;
+}
+
+void Handle_PB1_Press(void) {
+    uint8_t pb1_current = Read_Button(PB1_PORT, PB1_PIN);
+    if (pb1_current && !pb1_prev_state) {
+        if (!stop_mode_enabled) {
+            Enter_Stop_Mode();
+        } else if (!stop_mode_protection) {
+            Exit_Stop_Mode();
+        }
+    }
+    pb1_prev_state = pb1_current;
+}
+
+void System_Reset(void) {
+    UART2_SendString("Resetting...\r\n");
+    OLED_UpdateScreen(0, 0, 0); // Xóa màn hình trước khi reset
+    SSD1306_PrintString("Resetting...", 10, 3);
+    delay_ms(200);
+    NVIC_SystemReset();
+}
+
+void Enter_Stop_Mode(void) {
+    stop_mode_enabled = 1;
+    stop_mode_protection = 1;
+    stop_mode_timer = 0;
+    UART2_SendString("Stop Mode Activated\r\n");
+    GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16)) | (1 << (LED_RED_PIN + 16));
+    GPIOA->BSRR = (1 << LED_STOP_PIN);
+    GPIOA->BSRR = (1 << (GAS_VALVE_PIN + 16));
+    gas_valve_state = 0;
+    buzzer_active = 0;
+    update_pwm();
+    oled_update_flag = 1; // Yêu cầu cập nhật màn hình ngay lập tức
+}
+
+void Exit_Stop_Mode(void) {
+    stop_mode_enabled = 0;
+    stop_mode_protection = 0;
+    stop_mode_timer = 0;
+    UART2_SendString("System Resumed\r\n");
+    GPIOA->BSRR = (1 << (LED_STOP_PIN + 16));
+    oled_update_flag = 1; // Yêu cầu cập nhật màn hình ngay lập tức
+}
+void make_triangle_sin_table() {
+    for (int i = 0; i < SAMPLES; i++) {
+        float phase = (float)i / SAMPLES;
+        float triangle = phase < 0.5f ? (2.0f * phase) : (2.0f * (1.0f - phase));
+        float sin_mod = (sinf(2 * PI * phase) + 1.0f) / 2.0f;
+        pwm_table[i] = (uint16_t)(triangle * sin_mod * 999);
+    }
+}
+
+void delay_ms(uint32_t ms) {
+    SysTick->LOAD = 16000 - 1; // Giả sử xung 16MHz
+    SysTick->VAL = 0;
+    SysTick->CTRL = 5;
+    for(uint32_t i = 0; i < ms; i++) {
+        while(!(SysTick->CTRL & (1 << 16)));
+    }
+    SysTick->CTRL = 0;
+}
+
+void init_pwm() {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
+    GPIOA->MODER &= ~(3 << (8 * 2));
+    GPIOA->MODER |= (2 << (8 * 2));
+    GPIOA->AFR[1] &= ~(0xF << ((8 - 8) * 4));
+    GPIOA->AFR[1] |= (1 << ((8 - 8) * 4));
+    TIM1->PSC = 83; // 16MHz / (83+1) = ~200kHz
+    TIM1->ARR = 999;
+    TIM1->CCMR1 |= (6 << 4);
+    TIM1->CCMR1 |= (1 << 3);
+    TIM1->CCER |= TIM_CCER_CC1E;
+    TIM1->CR1 |= TIM_CR1_ARPE;
+    TIM1->BDTR |= TIM_BDTR_MOE;
+    TIM1->CR1 |= TIM_CR1_CEN;
+    TIM1->EGR |= TIM_EGR_UG;
+}
+
+void update_pwm() {
+    if(buzzer_active == 1){
+        TIM1->CCR1 = pwm_table[current_index];
+        current_index = (current_index + 1) % SAMPLES;
+    } else {
+        TIM1->CCR1 = 0;
+    }
+}

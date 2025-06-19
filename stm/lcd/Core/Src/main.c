@@ -1,243 +1,181 @@
-//#include "stm32f4xx.h"
-//#include <stdint.h>
-//#include <stdio.h>
-//
-//// ==== LCD I2C Definitions ====
-//#define SCL_PIN     6
-//#define SDA_PIN     7
-//#define LCD_GPIO    GPIOB
-//
-//#define SCL_HIGH()  (LCD_GPIO->BSRR = (1 << SCL_PIN))
-//#define SCL_LOW()   (LCD_GPIO->BSRR = (1 << (SCL_PIN + 16)))
-//#define SDA_HIGH()  (LCD_GPIO->BSRR = (1 << SDA_PIN))
-//#define SDA_LOW()   (LCD_GPIO->BSRR = (1 << (SDA_PIN + 16)))
-//
-//// ==== Delay ====
-//void delay_us(uint32_t us) {
-//    for (volatile uint32_t i = 0; i < us * 16; i++);
-//}
-//
-//// ==== I2C GPIO Init ====
-//void I2C_GPIO_Init(void) {
-//    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
-//
-//    LCD_GPIO->MODER &= ~((3 << (SCL_PIN * 2)) | (3 << (SDA_PIN * 2)));
-//    LCD_GPIO->MODER |=  ((1 << (SCL_PIN * 2)) | (1 << (SDA_PIN * 2)));
-//
-//    LCD_GPIO->OTYPER |= (1 << SCL_PIN) | (1 << SDA_PIN);
-//    LCD_GPIO->PUPDR &= ~((3 << (SCL_PIN * 2)) | (3 << (SDA_PIN * 2)));
-//    LCD_GPIO->PUPDR |=  ((1 << (SCL_PIN * 2)) | (1 << (SDA_PIN * 2)));
-//}
-//
-//// ==== I2C bit-banging ====
-//void I2C_Start(void) {
-//    SDA_HIGH(); SCL_HIGH(); delay_us(5);
-//    SDA_LOW();  delay_us(5);
-//    SCL_LOW();  delay_us(5);
-//}
-//
-//void I2C_Stop(void) {
-//    SDA_LOW();  SCL_HIGH(); delay_us(5);
-//    SDA_HIGH(); delay_us(5);
-//}
-//
-//void I2C_Write(uint8_t data) {
-//    for (int i = 0; i < 8; i++) {
-//        (data & 0x80) ? SDA_HIGH() : SDA_LOW();
-//        SCL_HIGH(); delay_us(5);
-//        SCL_LOW();  delay_us(5);
-//        data <<= 1;
-//    }
-//    SDA_HIGH(); SCL_HIGH(); delay_us(5); SCL_LOW(); delay_us(5);
-//}
-//
-//// ==== LCD functions ====
-//void LCD_WriteByte(uint8_t data, uint8_t rs) {
-//    uint8_t data_u = data & 0xF0;
-//    uint8_t data_l = (data << 4) & 0xF0;
-//    uint8_t control = rs ? 0x09 : 0x08;
-//
-//    I2C_Start();
-//    I2C_Write(0x4E); // Address of LCD
-//
-//    I2C_Write(data_u | control | 0x04);
-//    I2C_Write(data_u | control);
-//    I2C_Write(data_l | control | 0x04);
-//    I2C_Write(data_l | control);
-//
-//    I2C_Stop();
-//    delay_us(50);
-//}
-//
-//void LCD_Command(uint8_t cmd) {
-//    LCD_WriteByte(cmd, 0);
-//    delay_us(2000);
-//}
-//
-//void LCD_Data(uint8_t data) {
-//    LCD_WriteByte(data, 1);
-//    delay_us(50);
-//}
-//
-//void LCD_SetCursor(uint8_t col, uint8_t row) {
-//    uint8_t row_offsets[] = {0x00, 0x40, 0x14, 0x54};
-//    LCD_Command(0x80 | (col + row_offsets[row]));
-//}
-//
-//void LCD_Print(char *str) {
-//    while (*str) LCD_Data(*str++);
-//}
-//
-//void LCD_Init(void) {
-//    I2C_GPIO_Init();
-//    delay_us(50000);
-//    LCD_Command(0x33);
-//    LCD_Command(0x32);
-//    LCD_Command(0x28);
-//    LCD_Command(0x0C);
-//    LCD_Command(0x06);
-//    LCD_Command(0x01);
-//    delay_us(2000);
-//}
-//
-//// ==== MAIN ====
-//int main(void) {
-//    SystemInit();
-//    LCD_Init();
-//
-//
-//    while (1) {
-//        LCD_SetCursor(0, 0);
-//        LCD_Print("HELLO ");
-//        LCD_SetCursor(0, 1);
-//        LCD_Print("HELLO");
-//
-//    }
-//}
-// 8h10
-#include "stm32f4xx.h"
-#include <stdint.h>
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : Main program body
+  ******************************************************************************
+  * @attention
+  *
+  * Chương trình ví dụ điều khiển LCD I2C 16x2 trên STM32F401CCU6.
+  * Hiển thị chuỗi "Hello, World!" và một bộ đếm.
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "i2c_lcd.h" // Thêm thư viện LCD của bạn
 #include <stdio.h>
+/* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
 
-// ==== LCD I2C Definitions ====
-#define SCL_PIN     6
-#define SDA_PIN     7
-#define LCD_GPIO    GPIOB
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_I2C1_Init(void);
 
-#define SCL_HIGH()  (LCD_GPIO->BSRR = (1 << SCL_PIN))
-#define SCL_LOW()   (LCD_GPIO->BSRR = (1 << (SCL_PIN + 16)))
-#define SDA_HIGH()  (LCD_GPIO->BSRR = (1 << SDA_PIN))
-#define SDA_LOW()   (LCD_GPIO->BSRR = (1 << (SDA_PIN + 16)))
+// Khai báo biến handle cho LCD
+I2C_LCD_HandleTypeDef lcd;
 
-// ==== Timer1 Delay ====
-void TIM1_Init(void) {
-    RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;  // Enable Timer1 clock
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+  /* MCU Configuration--------------------------------------------------------*/
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
 
-    TIM1->PSC = 15;        // Prescaler: 16 MHz / (15 + 1) = 1 MHz -> 1 tick = 1 µs
-    TIM1->ARR = 0xFFFF;    // Auto-reload value max
-    TIM1->CNT = 0;         // Reset counter
-    TIM1->CR1 |= TIM_CR1_CEN; // Enable Timer1
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_I2C1_Init(); // Khởi tạo I2C
+
+  /* --- BẮT ĐẦU CODE CHO LCD --- */
+
+  // 1. Cấu hình handle cho LCD
+  lcd.hi2c = &hi2c1;             // Trỏ tới handle I2C1 đã được khởi tạo
+  lcd.address = (0x27 << 1);     // Địa chỉ của module LCD I2C.
+                                 // Phổ biến là 0x27 hoặc 0x3F.
+                                 // Phải dịch trái 1 bit cho thư viện HAL.
+
+  // 2. Khởi tạo LCD
+  lcd_init(&lcd);
+
+  // 3. Xóa màn hình
+  lcd_clear(&lcd);
+
+  // 4. Di chuyển con trỏ đến vị trí (cột 0, hàng 0)
+  lcd_gotoxy(&lcd, 0, 0);
+
+  // 5. Gửi chuỗi "hello" tới LCD
+  lcd_puts(&lcd, "hello");
+
+  // Ví dụ thêm: Hiển thị một chuỗi khác ở hàng thứ hai
+  lcd_gotoxy(&lcd, 0, 1);
+  lcd_puts(&lcd, "STM32F401CCU6");
+
+  /* --- KẾT THÚC CODE CHO LCD --- */
+
+
+  /* Infinite loop */
+  while (1)
+  {
+      // Vòng lặp chính có thể dùng để cập nhật màn hình hoặc làm việc khác.
+      // Ví dụ: làm một bộ đếm đơn giản
+      static uint8_t counter = 0;
+      char buffer[16];
+
+      // Di chuyển con trỏ tới cuối hàng đầu tiên
+      lcd_gotoxy(&lcd, 10, 0);
+
+      // Định dạng chuỗi và hiển thị bộ đếm
+      sprintf(buffer, "C:%03d", counter++);
+      lcd_puts(&lcd, buffer);
+
+      HAL_Delay(500); // Chờ 0.5 giây
+  }
 }
 
-void delay_us(uint16_t us) {
-    TIM1->CNT = 0;                // Reset counter
-    while (TIM1->CNT < us);      // Wait until desired time passed
+/**
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
+
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLM = 8;
+  RCC_OscInitStruct.PLL.PLLN = 168;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
+  RCC_OscInitStruct.PLL.PLLQ = 7;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
-// ==== I2C GPIO Init ====
-void I2C_GPIO_Init(void) {
-    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
-
-    LCD_GPIO->MODER &= ~((3 << (SCL_PIN * 2)) | (3 << (SDA_PIN * 2)));
-    LCD_GPIO->MODER |=  ((1 << (SCL_PIN * 2)) | (1 << (SDA_PIN * 2)));
-
-    LCD_GPIO->OTYPER |= (1 << SCL_PIN) | (1 << SDA_PIN);
-    LCD_GPIO->PUPDR &= ~((3 << (SCL_PIN * 2)) | (3 << (SDA_PIN * 2)));
-    LCD_GPIO->PUPDR |=  ((1 << (SCL_PIN * 2)) | (1 << (SDA_PIN * 2)));
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000; // 100kHz
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
-// ==== I2C Bit-banging ====
-void I2C_Start(void) {
-    SDA_HIGH(); SCL_HIGH(); delay_us(5);
-    SDA_LOW();  delay_us(5);
-    SCL_LOW();  delay_us(5);
+/**
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_GPIO_Init(void)
+{
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOH_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 }
 
-void I2C_Stop(void) {
-    SDA_LOW();  SCL_HIGH(); delay_us(5);
-    SDA_HIGH(); delay_us(5);
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
+void Error_Handler(void)
+{
+  __disable_irq();
+  while (1)
+  {
+  }
 }
 
-void I2C_Write(uint8_t data) {
-    for (int i = 0; i < 8; i++) {
-        (data & 0x80) ? SDA_HIGH() : SDA_LOW();
-        SCL_HIGH(); delay_us(5);
-        SCL_LOW();  delay_us(5);
-        data <<= 1;
-    }
-    SDA_HIGH(); SCL_HIGH(); delay_us(5); SCL_LOW(); delay_us(5); // ACK clock
+#ifdef  USE_FULL_ASSERT
+void assert_failed(uint8_t *file, uint32_t line)
+{
 }
-
-// ==== LCD Functions ====
-void LCD_WriteByte(uint8_t data, uint8_t rs) {
-    uint8_t data_u = data & 0xF0;
-    uint8_t data_l = (data << 4) & 0xF0;
-    uint8_t control = rs ? 0x09 : 0x08; // rs=1:data, rs=0:command (backlight on)
-
-    I2C_Start();
-    I2C_Write(0x4E); // I2C address (write)
-
-    I2C_Write(data_u | control | 0x04); // EN=1
-    I2C_Write(data_u | control);        // EN=0
-    I2C_Write(data_l | control | 0x04);
-    I2C_Write(data_l | control);
-
-    I2C_Stop();
-    delay_us(50);
-}
-
-void LCD_Command(uint8_t cmd) {
-    LCD_WriteByte(cmd, 0);
-    delay_us(2000);  // Commands need more delay
-}
-
-void LCD_Data(uint8_t data) {
-    LCD_WriteByte(data, 1);
-    delay_us(50);
-}
-
-void LCD_SetCursor(uint8_t col, uint8_t row) {
-    uint8_t row_offsets[] = {0x00, 0x40, 0x14, 0x54};
-    LCD_Command(0x80 | (col + row_offsets[row]));
-}
-
-void LCD_Print(char *str) {
-    while (*str) LCD_Data(*str++);
-}
-
-void LCD_Init(void) {
-    I2C_GPIO_Init();
-    delay_us(50000);      // Wait for LCD power-up
-
-    LCD_Command(0x33);
-    LCD_Command(0x32);
-    LCD_Command(0x28);    // 4-bit mode, 2 lines
-    LCD_Command(0x0C);    // Display ON, cursor OFF
-    LCD_Command(0x06);    // Entry mode: increment
-    LCD_Command(0x01);    // Clear display
-    delay_us(2000);
-}
-
-// ==== MAIN ====
-int main(void) {
-    SystemInit();
-    TIM1_Init();      // Initialize Timer1 for delay_us
-    LCD_Init();       // Initialize LCD
-
-    while (1) {
-        LCD_SetCursor(0, 0);
-        LCD_Print("HELLO ");
-        LCD_SetCursor(0, 1);
-        LCD_Print("WORLD ");
-    }
-}
+#endif /* USE_FULL_ASSERT */

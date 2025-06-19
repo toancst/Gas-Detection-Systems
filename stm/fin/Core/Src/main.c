@@ -14,7 +14,6 @@
 #define LED_STOP_PORT   GPIOA
 #define LED_STOP_PIN    7
 
-// Thêm định nghĩa cho relay van gas
 #define GAS_VALVE_PORT  GPIOA
 #define GAS_VALVE_PIN   1
 
@@ -27,7 +26,7 @@
 #define GAS_THRESHOLD_MID   900
 #define GAS_THRESHOLD_HIGH  1600
 #define GAS_THRESHOLD_BUZZER 1200
-#define GAS_THRESHOLD_VALVE  1000  // Ngưỡng để điều khiển van gas
+#define GAS_THRESHOLD_VALVE  1000
 
 #define PI 3.14159265
 #define SAMPLES 100
@@ -49,13 +48,56 @@ volatile uint32_t stop_mode_timer = 0;
 volatile uint8_t stop_mode_protection = 0;
 volatile uint8_t pb1_prev_state = 0;
 
-// Biến cho nút reset PB0
 volatile uint8_t pb0_prev_state = 0;
 volatile uint32_t reset_protection_timer = 0;
 volatile uint8_t reset_protection_active = 0;
 
-// Biến cho trạng thái van gas
-volatile uint8_t gas_valve_state = 0; // 0: mở, 1: đóng
+volatile uint8_t gas_valve_state = 0;
+
+volatile uint32_t oled_update_counter = 0;
+volatile uint8_t oled_need_update = 0;
+
+const uint8_t font5x7[][5] = {
+    {0x3E, 0x51, 0x49, 0x45, 0x3E}, // 0
+    {0x00, 0x42, 0x7F, 0x40, 0x00}, // 1
+    {0x42, 0x61, 0x51, 0x49, 0x46}, // 2
+    {0x21, 0x41, 0x45, 0x4B, 0x31}, // 3
+    {0x18, 0x14, 0x12, 0x7F, 0x10}, // 4
+    {0x27, 0x45, 0x45, 0x45, 0x39}, // 5
+    {0x3C, 0x4A, 0x49, 0x49, 0x30}, // 6
+    {0x01, 0x71, 0x09, 0x05, 0x03}, // 7
+    {0x36, 0x49, 0x49, 0x49, 0x36}, // 8
+    {0x06, 0x49, 0x49, 0x29, 0x1E}, // 9
+    {0x7C, 0x12, 0x11, 0x12, 0x7C}, // A
+    {0x7F, 0x49, 0x49, 0x49, 0x36}, // B
+    {0x3E, 0x41, 0x41, 0x41, 0x22}, // C
+    {0x7F, 0x41, 0x41, 0x22, 0x1C}, // D
+    {0x7F, 0x49, 0x49, 0x49, 0x41}, // E
+    {0x7F, 0x09, 0x09, 0x09, 0x01}, // F
+    {0x3E, 0x41, 0x49, 0x49, 0x7A}, // G
+    {0x7F, 0x08, 0x08, 0x08, 0x7F}, // H
+    {0x00, 0x41, 0x7F, 0x41, 0x00}, // I
+    {0x20, 0x40, 0x41, 0x3F, 0x01}, // J
+    {0x7F, 0x08, 0x14, 0x22, 0x41}, // K
+    {0x7F, 0x40, 0x40, 0x40, 0x40}, // L
+    {0x7F, 0x02, 0x0C, 0x02, 0x7F}, // M
+    {0x7F, 0x04, 0x08, 0x10, 0x7F}, // N
+    {0x3E, 0x41, 0x41, 0x41, 0x3E}, // O
+    {0x7F, 0x09, 0x09, 0x09, 0x06}, // P
+    {0x3E, 0x41, 0x51, 0x21, 0x5E}, // Q
+    {0x7F, 0x09, 0x19, 0x29, 0x46}, // R
+    {0x46, 0x49, 0x49, 0x49, 0x31}, // S
+    {0x01, 0x01, 0x7F, 0x01, 0x01}, // T
+    {0x3F, 0x40, 0x40, 0x40, 0x3F}, // U
+    {0x1F, 0x20, 0x40, 0x20, 0x1F}, // V
+    {0x3F, 0x40, 0x38, 0x40, 0x3F}, // W
+    {0x63, 0x14, 0x08, 0x14, 0x63}, // X
+    {0x07, 0x08, 0x70, 0x08, 0x07}, // Y
+    {0x61, 0x51, 0x49, 0x45, 0x43}, // Z
+    {0x00, 0x00, 0x00, 0x00, 0x00}, // space
+    {0x00, 0x00, 0x5F, 0x00, 0x00}, // :
+    {0x00, 0x00, 0x00, 0x00, 0x00}  // -
+};
 
 void UART2_Init(void);
 void UART2_SendChar(uint8_t c);
@@ -63,13 +105,13 @@ void UART2_SendString(char *str);
 void ADC1_Init(void);
 uint16_t ADC1_Read(void);
 void LED_Init(void);
-void Gas_Valve_Init(void);  // Thêm hàm khởi tạo van gas
+void Gas_Valve_Init(void);
 void TIM2_Init(void);
 void Button_Init(void);
 uint8_t Read_Button(GPIO_TypeDef* port, uint16_t pin);
 void LED_Control(uint16_t gasValue);
-void Gas_Valve_Control(uint16_t gasValue);  // Thêm hàm điều khiển van gas
-void Send_Gas_Value(uint16_t gasValue);  // Sửa đổi hàm gửi dữ liệu
+void Gas_Valve_Control(uint16_t gasValue);
+void Send_Gas_Value(uint16_t gasValue);
 uint8_t Calculate_Red_LED_Frequency(uint16_t gasValue);
 void Handle_PB0_Press(void);
 void Handle_PB1_Press(void);
@@ -82,18 +124,33 @@ void make_triangle_sin_table();
 void init_pwm();
 void update_pwm();
 
+void I2C1_Init(void);
+void I2C_WriteByte(uint8_t address, uint8_t reg, uint8_t data);
+void SSD1306_Command(uint8_t cmd);
+void SSD1306_Data(uint8_t data);
+void SSD1306_Init(void);
+void SSD1306_Clear(void);
+void SSD1306_SetCursor(uint8_t col, uint8_t page);
+void SSD1306_PrintChar(const uint8_t *chr);
+void SSD1306_PrintString(char *str);
+void SSD1306_PrintNumber(uint16_t num);
+void SSD1306_UpdateDisplay(void);
+
 int main(void) {
     SystemCoreClockUpdate();
     UART2_Init();
     ADC1_Init();
     LED_Init();
-    Gas_Valve_Init();  // Khởi tạo van gas
+    Gas_Valve_Init();
     Button_Init();
     TIM2_Init();
     init_pwm();
     make_triangle_sin_table();
 
-    // Khởi tạo bảo vệ reset trong 5 giây đầu
+    I2C1_Init();
+    SSD1306_Init();
+    SSD1306_Clear();
+
     reset_protection_active = 1;
     reset_protection_timer = 0;
 
@@ -104,8 +161,8 @@ int main(void) {
             gasValue = ADC1_Read();
             current_gas_value = gasValue;
             LED_Control(gasValue);
-            Gas_Valve_Control(gasValue);  // Điều khiển van gas
-            Send_Gas_Value(gasValue);  // Chỉ gửi giá trị gas
+            Gas_Valve_Control(gasValue);
+            Send_Gas_Value(gasValue);
 
             if (gasValue >= GAS_THRESHOLD_BUZZER) {
                 buzzer_active = 1;
@@ -114,6 +171,11 @@ int main(void) {
                 buzzer_active = 0;
                 update_pwm();
             }
+        }
+
+        if (oled_need_update) {
+            SSD1306_UpdateDisplay();
+            oled_need_update = 0;
         }
 
         Handle_PB0_Press();
@@ -143,10 +205,8 @@ void UART2_SendString(char *str) {
 void ADC1_Init(void) {
     RCC->APB2ENR |= RCC_APB2ENR_ADC1EN;
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
-
     MQ2_PIN_PORT->MODER |= (3 << (MQ2_PIN * 2));
-
-    ADC1->SMPR2 |= (7 << (3 * 0)); // Channel 0 sampling time
+    ADC1->SMPR2 |= (7 << (3 * 0));
     ADC1->SQR1 = 0;
     ADC1->SQR3 = 0;
     ADC1->CR2 |= ADC_CR2_ADON;
@@ -154,7 +214,7 @@ void ADC1_Init(void) {
 }
 
 uint16_t ADC1_Read(void) {
-    ADC1->SQR3 = 0; // Channel 0 for MQ2 sensor
+    ADC1->SQR3 = 0;
     ADC1->CR2 |= ADC_CR2_SWSTART;
     while (!(ADC1->SR & ADC_SR_EOC));
     return (uint16_t)ADC1->DR;
@@ -162,10 +222,8 @@ uint16_t ADC1_Read(void) {
 
 void Button_Init(void) {
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
-
-    // Cấu hình PB0 và PB1 làm input với pull-down resistor
-    PB0_PORT->MODER &= ~((3 << (PB0_PIN * 2)) | (3 << (PB1_PIN * 2))); // Input mode
-    PB0_PORT->PUPDR |= (2 << (PB0_PIN * 2)) | (2 << (PB1_PIN * 2)); // Pull-down resistor
+    PB0_PORT->MODER &= ~((3 << (PB0_PIN * 2)) | (3 << (PB1_PIN * 2)));
+    PB0_PORT->PUPDR |= (2 << (PB0_PIN * 2)) | (2 << (PB1_PIN * 2));
 }
 
 uint8_t Read_Button(GPIO_TypeDef* port, uint16_t pin) {
@@ -174,39 +232,29 @@ uint8_t Read_Button(GPIO_TypeDef* port, uint16_t pin) {
 
 void LED_Init(void) {
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
-
-    // Cấu hình cho LED Green, Yellow, Red và Stop
     GPIOA->MODER &= ~((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)) | (3 << (LED_STOP_PIN * 2)));
     GPIOA->MODER |= (1 << (LED_GREEN_PIN * 2)) | (1 << (LED_YELLOW_PIN * 2)) | (1 << (LED_RED_PIN * 2)) | (1 << (LED_STOP_PIN * 2));
     GPIOA->OTYPER &= ~((1 << LED_GREEN_PIN) | (1 << LED_YELLOW_PIN) | (1 << LED_RED_PIN) | (1 << LED_STOP_PIN));
     GPIOA->OSPEEDR |= ((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)) | (3 << (LED_STOP_PIN * 2)));
     GPIOA->PUPDR &= ~((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)) | (3 << (LED_STOP_PIN * 2)));
-
-    // Tắt tất cả LED ban đầu
     GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16)) | (1 << (LED_RED_PIN + 16)) | (1 << (LED_STOP_PIN + 16));
 }
 
-// Hàm khởi tạo van gas relay
 void Gas_Valve_Init(void) {
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
-
-    // Cấu hình chân A1 làm output cho relay van gas
-    GPIOA->MODER &= ~(3 << (GAS_VALVE_PIN * 2));  // Xóa bits cũ
-    GPIOA->MODER |= (1 << (GAS_VALVE_PIN * 2));   // Output mode
-    GPIOA->OTYPER &= ~(1 << GAS_VALVE_PIN);       // Push-pull
-    GPIOA->OSPEEDR |= (3 << (GAS_VALVE_PIN * 2)); // High speed
-    GPIOA->PUPDR &= ~(3 << (GAS_VALVE_PIN * 2));  // No pull-up/pull-down
-
-    // Khởi tạo van gas ở trạng thái mở (chân A1 = LOW)
+    GPIOA->MODER &= ~(3 << (GAS_VALVE_PIN * 2));
+    GPIOA->MODER |= (1 << (GAS_VALVE_PIN * 2));
+    GPIOA->OTYPER &= ~(1 << GAS_VALVE_PIN);
+    GPIOA->OSPEEDR |= (3 << (GAS_VALVE_PIN * 2));
+    GPIOA->PUPDR &= ~(3 << (GAS_VALVE_PIN * 2));
     GPIOA->BSRR = (1 << (GAS_VALVE_PIN + 16));
-    gas_valve_state = 0; // 0: mở
+    gas_valve_state = 0;
 }
 
 void TIM2_Init(void) {
     RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
-
-    TIM2->PSC = 8400 - 1;
-    TIM2->ARR = 10 - 1;
+    TIM2->PSC = 8400 - 1; // 16MHz/8400 = 10kHz
+    TIM2->ARR = 100 - 1;   // 100/10kHz = 10ms
     TIM2->DIER |= TIM_DIER_UIE;
     TIM2->CR1 |= TIM_CR1_CEN;
     NVIC_EnableIRQ(TIM2_IRQn);
@@ -228,30 +276,27 @@ uint8_t Calculate_Red_LED_Frequency(uint16_t gasValue) {
 }
 
 void LED_Control(uint16_t gasValue) {
-    // Tắt LED Green và Yellow trước
     GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16));
-
     if (gasValue < GAS_THRESHOLD_LOW) {
         GPIOA->BSRR = (1 << LED_GREEN_PIN);
         led_red_frequency = 0;
+        GPIOA->BSRR = (1 << (LED_RED_PIN + 16)); // Tắt hẳn LED đỏ
     } else if (gasValue < GAS_THRESHOLD_MID) {
         GPIOA->BSRR = (1 << LED_YELLOW_PIN);
         led_red_frequency = 0;
+        GPIOA->BSRR = (1 << (LED_RED_PIN + 16)); // Tắt hẳn LED đỏ
     } else {
         led_red_frequency = Calculate_Red_LED_Frequency(gasValue);
     }
 }
 
-// Hàm điều khiển van gas
 void Gas_Valve_Control(uint16_t gasValue) {
     if (gasValue > GAS_THRESHOLD_VALVE) {
-        // Đóng van gas (chân A1 lên mức cao)
         if (gas_valve_state == 0) {
             GPIOA->BSRR = (1 << GAS_VALVE_PIN);
             gas_valve_state = 1;
         }
     } else {
-        // Mở van gas (chân A1 xuống mức thấp)
         if (gas_valve_state == 1) {
             GPIOA->BSRR = (1 << (GAS_VALVE_PIN + 16));
             gas_valve_state = 0;
@@ -259,29 +304,24 @@ void Gas_Valve_Control(uint16_t gasValue) {
     }
 }
 
-// Hàm gửi chỉ giá trị gas
 void Send_Gas_Value(uint16_t gasValue) {
     char buffer[20];
-    sprintf(buffer, "%d\r\n", gasValue);
+    sprintf(buffer, "Gas: %d\r\n", gasValue);
     UART2_SendString(buffer);
 }
 
 void Handle_PB0_Press(void) {
     uint8_t pb0_current = Read_Button(PB0_PORT, PB0_PIN);
-
-    // Kiểm tra nhấn nút PB0 (reset button)
     if (pb0_current && !pb0_prev_state) {
         if (!reset_protection_active) {
             System_Reset();
         }
     }
-
     pb0_prev_state = pb0_current;
 }
 
 void Handle_PB1_Press(void) {
     uint8_t pb1_current = Read_Button(PB1_PORT, PB1_PIN);
-
     if (pb1_current && !pb1_prev_state) {
         if (!stop_mode_enabled) {
             Enter_Stop_Mode();
@@ -289,12 +329,11 @@ void Handle_PB1_Press(void) {
             Exit_Stop_Mode();
         }
     }
-
     pb1_prev_state = pb1_current;
 }
 
 void System_Reset(void) {
-    UART2_SendString("Reset\r\n");
+    UART2_SendString("222222\r\n111111\r\n");
     delay_ms(100);  // Đợi ngắn để thông báo được gửi
     NVIC_SystemReset();
 }
@@ -304,7 +343,7 @@ void Enter_Stop_Mode(void) {
     stop_mode_protection = 1;
     stop_mode_timer = 0;
 
-    UART2_SendString("Stop\r\n");
+    UART2_SendString("000000\r\n");
 
     // Tắt tất cả LED trạng thái khí gas
     GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16)) | (1 << (LED_RED_PIN + 16));
@@ -325,51 +364,11 @@ void Exit_Stop_Mode(void) {
     stop_mode_protection = 0;
     stop_mode_timer = 0;
 
-    UART2_SendString("Continue\r\n");
+    UART2_SendString("111111\r\n");
 
     // Tắt LED Stop Mode (A7)
     GPIOA->BSRR = (1 << (LED_STOP_PIN + 16));
 }
-
-void TIM2_IRQHandler(void) {
-    if (TIM2->SR & TIM_SR_UIF) {
-        TIM2->SR &= ~TIM_SR_UIF;
-
-        timer_counter++;
-
-        // Xử lý bảo vệ stop mode
-        if (stop_mode_protection) {
-            stop_mode_timer++;
-            if (stop_mode_timer >= 1000) {  // 10 giây
-                stop_mode_protection = 0;
-            }
-        }
-
-        // Xử lý bảo vệ reset
-        if (reset_protection_active) {
-            reset_protection_timer++;
-            if (reset_protection_timer >= 500) {  // 5 giây (500 * 10ms)
-                reset_protection_active = 0;
-            }
-        }
-
-        // Xử lý LED đỏ
-        if (!stop_mode_enabled && led_red_frequency > 0) {
-            led_red_counter++;
-            uint32_t led_red_period = 50 / led_red_frequency;
-
-            if (led_red_counter >= led_red_period) {
-                GPIOA->ODR ^= (1 << LED_RED_PIN);
-                led_red_counter = 0;
-            }
-        } else if (stop_mode_enabled) {
-            // Đảm bảo LED Red tắt khi ở Stop Mode
-            GPIOA->BSRR = (1 << (LED_RED_PIN + 16));
-            led_red_counter = 0;
-        }
-    }
-}
-
 void make_triangle_sin_table() {
     for (int i = 0; i < SAMPLES; i++) {
         float phase = (float)i / SAMPLES;
@@ -380,7 +379,7 @@ void make_triangle_sin_table() {
 }
 
 void delay_ms(uint32_t ms) {
-    SysTick->LOAD = 16000 - 1;
+    SysTick->LOAD = 16000 - 1; // Giả sử xung 16MHz
     SysTick->VAL = 0;
     SysTick->CTRL = 5;
     for(uint32_t i = 0; i < ms; i++) {
@@ -392,23 +391,18 @@ void delay_ms(uint32_t ms) {
 void init_pwm() {
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
     RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
-
     GPIOA->MODER &= ~(3 << (8 * 2));
-    GPIOA->MODER |=  (2 << (8 * 2));
+    GPIOA->MODER |= (2 << (8 * 2));
     GPIOA->AFR[1] &= ~(0xF << ((8 - 8) * 4));
-    GPIOA->AFR[1] |=  (1 << ((8 - 8) * 4));
-
-    TIM1->PSC = 83;
+    GPIOA->AFR[1] |= (1 << ((8 - 8) * 4));
+    TIM1->PSC = 83; // 16MHz / (83+1) = ~200kHz
     TIM1->ARR = 999;
-
     TIM1->CCMR1 |= (6 << 4);
     TIM1->CCMR1 |= (1 << 3);
-
     TIM1->CCER |= TIM_CCER_CC1E;
     TIM1->CR1 |= TIM_CR1_ARPE;
     TIM1->BDTR |= TIM_BDTR_MOE;
     TIM1->CR1 |= TIM_CR1_CEN;
-
     TIM1->EGR |= TIM_EGR_UG;
 }
 
@@ -416,7 +410,187 @@ void update_pwm() {
     if(buzzer_active == 1){
         TIM1->CCR1 = pwm_table[current_index];
         current_index = (current_index + 1) % SAMPLES;
-    } else{
+    } else {
         TIM1->CCR1 = 0;
+    }
+}
+
+
+void TIM2_IRQHandler(void) {
+    if (TIM2->SR & TIM_SR_UIF) {
+        TIM2->SR &= ~TIM_SR_UIF;
+
+        timer_counter++;
+        oled_update_counter++;
+
+        if (oled_update_counter >= 50) {
+            oled_need_update = 1;
+            oled_update_counter = 0;
+        }
+
+        if (stop_mode_protection) {
+            stop_mode_timer++;
+            if (stop_mode_timer >= 100) {
+                stop_mode_protection = 0;
+            }
+        }
+
+        if (reset_protection_active) {
+            reset_protection_timer++;
+            if (reset_protection_timer >= 100) {
+                reset_protection_active = 0;
+            }
+        }
+
+        if (!stop_mode_enabled && led_red_frequency > 0) {
+            led_red_counter++;
+            uint32_t led_red_period = 50 / led_red_frequency;
+
+            if (led_red_counter >= led_red_period) {
+                GPIOA->ODR ^= (1 << LED_RED_PIN);
+                led_red_counter = 0;
+            }
+        } else if (stop_mode_enabled) {
+            GPIOA->BSRR = (1 << (LED_RED_PIN + 16));
+            led_red_counter = 0;
+        }
+    }
+}
+
+void I2C1_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
+    RCC->APB1ENR |= RCC_APB1ENR_I2C1EN;
+
+    GPIOB->MODER &= ~(0xF << (8 * 2));
+    GPIOB->MODER |= (0xA << (8 * 2));
+    GPIOB->OTYPER |= (0x3 << 8);
+    GPIOB->OSPEEDR |= (0xF << (8 * 2));
+    GPIOB->AFR[1] |= (0x44 << ((8 - 8) * 4));
+
+    I2C1->CR1 &= ~I2C_CR1_PE;
+    I2C1->CR2 = 16;
+    I2C1->CCR = 80;
+    I2C1->TRISE = 17;
+    I2C1->CR1 |= I2C_CR1_PE;
+}
+
+void I2C_WriteByte(uint8_t address, uint8_t reg, uint8_t data) {
+    I2C1->CR1 |= I2C_CR1_START;
+    while (!(I2C1->SR1 & I2C_SR1_SB));
+    I2C1->DR = address << 1;
+    while (!(I2C1->SR1 & I2C_SR1_ADDR));
+    (void)I2C1->SR2;
+    while (!(I2C1->SR1 & I2C_SR1_TXE));
+    I2C1->DR = reg;
+    while (!(I2C1->SR1 & I2C_SR1_TXE));
+    I2C1->DR = data;
+    while (!(I2C1->SR1 & I2C_SR1_BTF));
+    I2C1->CR1 |= I2C_CR1_STOP;
+}
+
+void SSD1306_Command(uint8_t cmd) {
+    I2C_WriteByte(0x3C, 0x00, cmd);
+}
+
+void SSD1306_Data(uint8_t data) {
+    I2C_WriteByte(0x3C, 0x40, data);
+}
+
+void SSD1306_Init(void) {
+    delay_ms(100);
+    SSD1306_Command(0xAE);
+    SSD1306_Command(0xD5); SSD1306_Command(0x80);
+    SSD1306_Command(0xA8); SSD1306_Command(0x3F);
+    SSD1306_Command(0xD3); SSD1306_Command(0x00);
+    SSD1306_Command(0x40);
+    SSD1306_Command(0x8D); SSD1306_Command(0x14);
+    SSD1306_Command(0x20); SSD1306_Command(0x00);
+    SSD1306_Command(0xA1);
+    SSD1306_Command(0xC8);
+    SSD1306_Command(0xDA); SSD1306_Command(0x12);
+    SSD1306_Command(0x81); SSD1306_Command(0xCF);
+    SSD1306_Command(0xD9); SSD1306_Command(0xF1);
+    SSD1306_Command(0xDB); SSD1306_Command(0x40);
+    SSD1306_Command(0xA4);
+    SSD1306_Command(0xA6);
+    SSD1306_Command(0xAF);
+}
+
+void SSD1306_Clear(void) {
+    for (uint8_t page = 0; page < 8; page++) {
+        SSD1306_SetCursor(0, page);
+        for (uint8_t col = 0; col < 128; col++) {
+            SSD1306_Data(0x00);
+        }
+    }
+}
+
+void SSD1306_SetCursor(uint8_t col, uint8_t page) {
+    SSD1306_Command(0xB0 + page);
+    SSD1306_Command(0x00 + (col & 0x0F));
+    SSD1306_Command(0x10 + ((col >> 4) & 0x0F));
+}
+
+void SSD1306_PrintChar(const uint8_t *chr) {
+    for (int i = 0; i < 5; i++) {
+        SSD1306_Data(chr[i]);
+    }
+    SSD1306_Data(0x00);
+}
+
+void SSD1306_PrintString(char *str) {
+    while (*str) {
+        if (*str >= '0' && *str <= '9') {
+            SSD1306_PrintChar(font5x7[*str - '0']);
+        } else if (*str >= 'A' && *str <= 'Z') {
+            SSD1306_PrintChar(font5x7[*str - 'A' + 10]);
+        } else if (*str == ' ') {
+            SSD1306_PrintChar(font5x7[36]);
+        } else if (*str == ':') {
+            SSD1306_PrintChar(font5x7[37]);
+        } else if (*str == '-') {
+            SSD1306_PrintChar(font5x7[38]);
+        }
+        str++;
+    }
+}
+
+void SSD1306_PrintNumber(uint16_t num) {
+    char buffer[6];
+    sprintf(buffer, "%d", num);
+    SSD1306_PrintString(buffer);
+}
+
+void SSD1306_UpdateDisplay(void) {
+    SSD1306_Clear();
+
+    SSD1306_SetCursor(0, 0);
+    SSD1306_PrintString("GAS:");
+    SSD1306_PrintNumber(current_gas_value);
+
+    SSD1306_SetCursor(0, 2);
+    SSD1306_PrintString("SYS:");
+    if (stop_mode_enabled) {
+        SSD1306_PrintString("STOPPED");
+    } else {
+        SSD1306_PrintString("RUNNING");
+    }
+
+    SSD1306_SetCursor(0, 4);
+    SSD1306_PrintString("WARN:");
+    if (current_gas_value < GAS_THRESHOLD_LOW) {
+        SSD1306_PrintString("LOW");
+    } else if (current_gas_value < GAS_THRESHOLD_MID) {
+        SSD1306_PrintString("CAUTION");
+    } else {
+        SSD1306_PrintString("DANGEROUS");
+    }
+
+    SSD1306_SetCursor(0, 6);
+    SSD1306_PrintString("VALVE:");
+    if (gas_valve_state == 0) {
+        SSD1306_PrintString("OPEN");
+    } else {
+        SSD1306_PrintString("CLOSE");
     }
 }

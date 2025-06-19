@@ -1,0 +1,669 @@
+#include "stm32f4xx.h"
+#include <stdio.h>
+#include <math.h>
+#include <string.h>
+#include <stdbool.h>
+
+// ==== MQ2 Pin Definitions ====
+#define MQ2_PIN_PORT    GPIOA
+#define MQ2_PIN         0
+
+// ==== LED Pin Definitions ====
+#define LED_GREEN_PORT  GPIOA
+#define LED_GREEN_PIN   4
+#define LED_YELLOW_PORT GPIOA
+#define LED_YELLOW_PIN  5
+#define LED_RED_PORT    GPIOA
+#define LED_RED_PIN     6
+#define LED_STOP_PORT   GPIOA
+#define LED_STOP_PIN    7
+
+// ==== Gas Valve Pin Definition ====
+#define GAS_VALVE_PORT  GPIOA
+#define GAS_VALVE_PIN   1
+
+// ==== Button Pin Definitions ====
+#define PB0_PORT        GPIOB
+#define PB0_PIN         0
+#define PB1_PORT        GPIOB
+#define PB1_PIN         1
+
+// ==== LCD I2C Pin Definitions ====
+#define SCL_PIN         6
+#define SDA_PIN         7
+#define LCD_GPIO        GPIOB
+
+// ==== MQ2 Calibration Constants ====
+#define RL_VALUE                    5.0     // Load resistor in KOhms
+#define RO_CLEAN_AIR_FACTOR         9.83    // Rs/Ro ratio in clean air
+#define CALIBRATION_SAMPLE_TIMES    50      // Number of samples for calibration
+#define CALIBRATION_SAMPLE_INTERVAL 500     // Time between samples (ms)
+#define READ_SAMPLE_TIMES           5       // Number of samples for normal reading
+#define READ_SAMPLE_INTERVAL        50      // Time between normal readings (ms)
+#define READ_DELAY                  100     // Minimum time between readings (ms)
+
+// ==== Gas Threshold Definitions ====
+#define GAS_THRESHOLD_LOW       300
+#define GAS_THRESHOLD_MID       900
+#define GAS_THRESHOLD_HIGH      1600
+#define GAS_THRESHOLD_BUZZER    1200
+#define GAS_THRESHOLD_VALVE     1000
+
+// ==== System Constants ====
+#define PI 3.14159265
+#define SAMPLES 100
+#define VREF 3.3f
+#define ADC_MAX 4095.0f
+
+// ==== LCD I2C Macros ====
+#define SCL_HIGH()  (LCD_GPIO->BSRR = (1 << SCL_PIN))
+#define SCL_LOW()   (LCD_GPIO->BSRR = (1 << (SCL_PIN + 16)))
+#define SDA_HIGH()  (LCD_GPIO->BSRR = (1 << SDA_PIN))
+#define SDA_LOW()   (LCD_GPIO->BSRR = (1 << (SDA_PIN + 16)))
+
+// ==== MQ2 Structure ====
+typedef struct {
+    float LPGCurve[3];
+    float COCurve[3];
+    float SmokeCurve[3];
+    float Ro;
+    uint32_t lastReadTime;
+    float values[3];  // [LPG, CO, Smoke]
+} MQ2;
+
+// ==== Global Variables ====
+volatile uint16_t pwm_table[SAMPLES];
+volatile uint32_t current_index = 0;
+volatile uint8_t buzzer_active = 0;
+
+volatile uint32_t timer_counter = 0;
+volatile uint32_t led_red_counter = 0;
+volatile uint8_t led_red_state = 0;
+volatile uint8_t led_red_frequency = 1;
+volatile uint16_t current_gas_value = 0;
+
+volatile uint8_t stop_mode_enabled = 0;
+volatile uint32_t stop_mode_timer = 0;
+volatile uint8_t stop_mode_protection = 0;
+volatile uint8_t pb1_prev_state = 0;
+
+volatile uint8_t pb0_prev_state = 0;
+volatile uint32_t reset_protection_timer = 0;
+volatile uint8_t reset_protection_active = 0;
+
+volatile uint8_t gas_valve_state = 0; // 0: open, 1: closed
+
+// MQ2 sensor instance
+MQ2 mq2_sensor;
+volatile uint32_t system_tick = 0;
+volatile uint32_t lcd_update_counter = 0;
+
+// ==== Function Prototypes ====
+// System functions
+void SystemInit_Custom(void);
+void delay_ms(uint32_t ms);
+void delay_us(uint16_t us);
+
+// UART functions
+void UART2_Init(void);
+void UART2_SendChar(uint8_t c);
+void UART2_SendString(char *str);
+
+// ADC functions
+void ADC1_Init(void);
+uint16_t ADC1_Read(void);
+
+// GPIO functions
+void LED_Init(void);
+void Gas_Valve_Init(void);
+void Button_Init(void);
+uint8_t Read_Button(GPIO_TypeDef* port, uint16_t pin);
+
+// Timer functions
+void TIM1_Init(void);
+void TIM2_Init(void);
+
+// Control functions
+void LED_Control(uint16_t gasValue);
+void Gas_Valve_Control(uint16_t gasValue);
+void Send_Gas_Value(uint16_t gasValue);
+uint8_t Calculate_Red_LED_Frequency(uint16_t gasValue);
+uint8_t Get_Gas_Alert_Level(uint16_t gasValue);
+
+// Button handling
+void Handle_PB0_Press(void);
+void Handle_PB1_Press(void);
+void System_Reset(void);
+void Enter_Stop_Mode(void);
+void Exit_Stop_Mode(void);
+
+// PWM functions
+void make_triangle_sin_table(void);
+void init_pwm(void);
+void update_pwm(void);
+
+// MQ2 functions
+void MQ2_create(MQ2 *sensor);
+void MQ2_begin(MQ2 *sensor);
+bool MQ2_checkCalibration(MQ2 *sensor);
+float MQ2_MQResistanceCalculation(int raw_adc);
+float MQ2_MQCalibration(MQ2 *sensor);
+float MQ2_MQRead(MQ2 *sensor);
+float MQ2_MQGetPercentage(float *pcurve, MQ2 *sensor);
+float* MQ2_read(MQ2 *sensor, bool print);
+float MQ2_readLPG(MQ2 *sensor);
+float MQ2_readCO(MQ2 *sensor);
+float MQ2_readSmoke(MQ2 *sensor);
+
+// LCD functions
+void I2C_GPIO_Init(void);
+void I2C_Start(void);
+void I2C_Stop(void);
+void I2C_Write(uint8_t data);
+void LCD_WriteByte(uint8_t data, uint8_t rs);
+void LCD_Command(uint8_t cmd);
+void LCD_Data(uint8_t data);
+void LCD_SetCursor(uint8_t col, uint8_t row);
+void LCD_Print(char *str);
+void LCD_Init(void);
+void LCD_Update_Display(void);
+
+// ==== Main Function ====
+int main(void) {
+    SystemCoreClockUpdate();
+    
+    // Initialize all peripherals
+    UART2_Init();
+    ADC1_Init();
+    LED_Init();
+    Gas_Valve_Init();
+    Button_Init();
+    TIM1_Init();
+    TIM2_Init();
+    LCD_Init();
+    
+    // Initialize PWM for buzzer
+    init_pwm();
+    make_triangle_sin_table();
+    
+    // Initialize MQ2 sensor
+    MQ2_create(&mq2_sensor);
+    
+    UART2_SendString("System starting...\r\n");
+    LCD_SetCursor(0, 0);
+    LCD_Print("Initializing...");
+    delay_ms(2000);
+    
+    // Calibrate MQ2 sensor
+    UART2_SendString("Calibrating MQ2 sensor...\r\n");
+    LCD_SetCursor(0, 0);
+    LCD_Print("Calibrating MQ2 ");
+    LCD_SetCursor(0, 1);
+    LCD_Print("Please wait...  ");
+    
+    MQ2_begin(&mq2_sensor);
+    
+    char buffer[50];
+    sprintf(buffer, "MQ2 Calibrated. Ro: %.2f\r\n", mq2_sensor.Ro);
+    UART2_SendString(buffer);
+    
+    // Initialize protection timers
+    reset_protection_active = 1;
+    reset_protection_timer = 0;
+    
+    LCD_SetCursor(0, 0);
+    LCD_Print("System Ready    ");
+    LCD_SetCursor(0, 1);
+    LCD_Print("Gas: 0 ppm      ");
+    delay_ms(1000);
+    
+    uint16_t gasValue;
+    
+    while (1) {
+        if (!stop_mode_enabled) {
+            gasValue = ADC1_Read();
+            current_gas_value = gasValue;
+            
+            LED_Control(gasValue);
+            Gas_Valve_Control(gasValue);
+            Send_Gas_Value(gasValue);
+            
+            if (gasValue >= GAS_THRESHOLD_BUZZER) {
+                buzzer_active = 1;
+                update_pwm();
+            } else {
+                buzzer_active = 0;
+                update_pwm();
+            }
+        }
+        
+        Handle_PB0_Press();
+        Handle_PB1_Press();
+        
+        // Update LCD every 500ms
+        if (lcd_update_counter >= 50) {
+            LCD_Update_Display();
+            lcd_update_counter = 0;
+        }
+        
+        delay_ms(10);
+    }
+}
+
+// ==== System Functions ====
+void delay_ms(uint32_t ms) {
+    SysTick->LOAD = 16000 - 1;
+    SysTick->VAL = 0;
+    SysTick->CTRL = 5;
+    for(uint32_t i = 0; i < ms; i++) {
+        while(!(SysTick->CTRL & (1 << 16)));
+    }
+    SysTick->CTRL = 0;
+}
+
+void delay_us(uint16_t us) {
+    TIM1->CNT = 0;
+    while (TIM1->CNT < us);
+}
+
+// ==== UART Functions ====
+void UART2_Init(void) {
+    RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    GPIOA->MODER |= (2 << 4) | (2 << 6);
+    GPIOA->AFR[0] |= (7 << 8) | (7 << 12);
+    USART2->BRR = 0x8B;
+    USART2->CR1 = USART_CR1_TE | USART_CR1_UE;
+}
+
+void UART2_SendChar(uint8_t c) {
+    while (!(USART2->SR & USART_SR_TXE));
+    USART2->DR = c;
+}
+
+void UART2_SendString(char *str) {
+    while (*str) UART2_SendChar(*str++);
+}
+
+// ==== ADC Functions ====
+void ADC1_Init(void) {
+    RCC->APB2ENR |= RCC_APB2ENR_ADC1EN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+
+    MQ2_PIN_PORT->MODER |= (3 << (MQ2_PIN * 2));
+
+    ADC1->SMPR2 |= (7 << (3 * 0));
+    ADC1->SQR1 = 0;
+    ADC1->SQR3 = 0;
+    ADC1->CR2 |= ADC_CR2_ADON;
+    for(volatile uint32_t i = 0; i < 10000; i++);
+}
+
+uint16_t ADC1_Read(void) {
+    ADC1->SQR3 = 0;
+    ADC1->CR2 |= ADC_CR2_SWSTART;
+    while (!(ADC1->SR & ADC_SR_EOC));
+    return (uint16_t)ADC1->DR;
+}
+
+// ==== GPIO Functions ====
+void Button_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
+    PB0_PORT->MODER &= ~((3 << (PB0_PIN * 2)) | (3 << (PB1_PIN * 2)));
+    PB0_PORT->PUPDR |= (2 << (PB0_PIN * 2)) | (2 << (PB1_PIN * 2));
+}
+
+uint8_t Read_Button(GPIO_TypeDef* port, uint16_t pin) {
+    return (port->IDR & (1 << pin)) ? 1 : 0;
+}
+
+void LED_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    GPIOA->MODER &= ~((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)) | (3 << (LED_STOP_PIN * 2)));
+    GPIOA->MODER |= (1 << (LED_GREEN_PIN * 2)) | (1 << (LED_YELLOW_PIN * 2)) | (1 << (LED_RED_PIN * 2)) | (1 << (LED_STOP_PIN * 2));
+    GPIOA->OTYPER &= ~((1 << LED_GREEN_PIN) | (1 << LED_YELLOW_PIN) | (1 << LED_RED_PIN) | (1 << LED_STOP_PIN));
+    GPIOA->OSPEEDR |= ((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)) | (3 << (LED_STOP_PIN * 2)));
+    GPIOA->PUPDR &= ~((3 << (LED_GREEN_PIN * 2)) | (3 << (LED_YELLOW_PIN * 2)) | (3 << (LED_RED_PIN * 2)) | (3 << (LED_STOP_PIN * 2)));
+    GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16)) | (1 << (LED_RED_PIN + 16)) | (1 << (LED_STOP_PIN + 16));
+}
+
+void Gas_Valve_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    GPIOA->MODER &= ~(3 << (GAS_VALVE_PIN * 2));
+    GPIOA->MODER |= (1 << (GAS_VALVE_PIN * 2));
+    GPIOA->OTYPER &= ~(1 << GAS_VALVE_PIN);
+    GPIOA->OSPEEDR |= (3 << (GAS_VALVE_PIN * 2));
+    GPIOA->PUPDR &= ~(3 << (GAS_VALVE_PIN * 2));
+    GPIOA->BSRR = (1 << (GAS_VALVE_PIN + 16));
+    gas_valve_state = 0;
+}
+
+// ==== Timer Functions ====
+void TIM1_Init(void) {
+    RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
+    TIM1->PSC = 15;
+    TIM1->ARR = 0xFFFF;
+    TIM1->CNT = 0;
+    TIM1->CR1 |= TIM_CR1_CEN;
+}
+
+void TIM2_Init(void) {
+    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+    TIM2->PSC = 8400 - 1;
+    TIM2->ARR = 10 - 1;
+    TIM2->DIER |= TIM_DIER_UIE;
+    TIM2->CR1 |= TIM_CR1_CEN;
+    NVIC_EnableIRQ(TIM2_IRQn);
+    NVIC_SetPriority(TIM2_IRQn, 0);
+}
+
+void TIM2_IRQHandler(void) {
+    if (TIM2->SR & TIM_SR_UIF) {
+        TIM2->SR &= ~TIM_SR_UIF;
+        
+        timer_counter++;
+        lcd_update_counter++;
+        
+        if (stop_mode_protection) {
+            stop_mode_timer++;
+            if (stop_mode_timer >= 1000) {
+                stop_mode_protection = 0;
+            }
+        }
+        
+        if (reset_protection_active) {
+            reset_protection_timer++;
+            if (reset_protection_timer >= 500) {
+                reset_protection_active = 0;
+            }
+        }
+        
+        if (!stop_mode_enabled && led_red_frequency > 0) {
+            led_red_counter++;
+            uint32_t led_red_period = 50 / led_red_frequency;
+            
+            if (led_red_counter >= led_red_period) {
+                GPIOA->ODR ^= (1 << LED_RED_PIN);
+                led_red_counter = 0;
+            }
+        } else if (stop_mode_enabled) {
+            GPIOA->BSRR = (1 << (LED_RED_PIN + 16));
+            led_red_counter = 0;
+        }
+        
+        system_tick++;
+    }
+}
+
+// ==== Control Functions ====
+uint8_t Calculate_Red_LED_Frequency(uint16_t gasValue) {
+    if (gasValue < GAS_THRESHOLD_MID) {
+        return 0;
+    } else if (gasValue >= GAS_THRESHOLD_HIGH) {
+        return 10;
+    } else {
+        uint16_t range = GAS_THRESHOLD_HIGH - GAS_THRESHOLD_MID;
+        uint16_t step = range / 10;
+        uint8_t frequency = ((gasValue - GAS_THRESHOLD_MID) / step) + 1;
+        if (frequency > 10) frequency = 10;
+        return frequency;
+    }
+}
+
+uint8_t Get_Gas_Alert_Level(uint16_t gasValue) {
+    if (gasValue < GAS_THRESHOLD_LOW) {
+        return 0; // No gas
+    } else if (gasValue < GAS_THRESHOLD_MID) {
+        return 1; // Low gas concentration
+    } else if (gasValue < GAS_THRESHOLD_HIGH) {
+        return 2; // High gas concentration
+    } else {
+        return 3; // Dangerous gas concentration
+    }
+}
+
+void LED_Control(uint16_t gasValue) {
+    GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16));
+    
+    if (gasValue < GAS_THRESHOLD_LOW) {
+        GPIOA->BSRR = (1 << LED_GREEN_PIN);
+        led_red_frequency = 0;
+    } else if (gasValue < GAS_THRESHOLD_MID) {
+        GPIOA->BSRR = (1 << LED_YELLOW_PIN);
+        led_red_frequency = 0;
+    } else {
+        led_red_frequency = Calculate_Red_LED_Frequency(gasValue);
+    }
+}
+
+void Gas_Valve_Control(uint16_t gasValue) {
+    if (gasValue > GAS_THRESHOLD_VALVE) {
+        if (gas_valve_state == 0) {
+            GPIOA->BSRR = (1 << GAS_VALVE_PIN);
+            gas_valve_state = 1;
+        }
+    } else {
+        if (gas_valve_state == 1) {
+            GPIOA->BSRR = (1 << (GAS_VALVE_PIN + 16));
+            gas_valve_state = 0;
+        }
+    }
+}
+
+void Send_Gas_Value(uint16_t gasValue) {
+    char buffer[20];
+    sprintf(buffer, "%d\r\n", gasValue);
+    UART2_SendString(buffer);
+}
+
+// ==== Button Handling ====
+void Handle_PB0_Press(void) {
+    uint8_t pb0_current = Read_Button(PB0_PORT, PB0_PIN);
+    
+    if (pb0_current && !pb0_prev_state) {
+        if (!reset_protection_active) {
+            System_Reset();
+        }
+    }
+    
+    pb0_prev_state = pb0_current;
+}
+
+void Handle_PB1_Press(void) {
+    uint8_t pb1_current = Read_Button(PB1_PORT, PB1_PIN);
+    
+    if (pb1_current && !pb1_prev_state) {
+        if (!stop_mode_enabled) {
+            Enter_Stop_Mode();
+        } else if (!stop_mode_protection) {
+            Exit_Stop_Mode();
+        }
+    }
+    
+    pb1_prev_state = pb1_current;
+}
+
+void System_Reset(void) {
+    UART2_SendString("Reset\r\n");
+    delay_ms(100);
+    NVIC_SystemReset();
+}
+
+void Enter_Stop_Mode(void) {
+    stop_mode_enabled = 1;
+    stop_mode_protection = 1;
+    stop_mode_timer = 0;
+    
+    UART2_SendString("Stop\r\n");
+    
+    GPIOA->BSRR = (1 << (LED_GREEN_PIN + 16)) | (1 << (LED_YELLOW_PIN + 16)) | (1 << (LED_RED_PIN + 16));
+    GPIOA->BSRR = (1 << LED_STOP_PIN);
+    
+    GPIOA->BSRR = (1 << (GAS_VALVE_PIN + 16));
+    gas_valve_state = 0;
+    
+    buzzer_active = 0;
+    update_pwm();
+}
+
+void Exit_Stop_Mode(void) {
+    stop_mode_enabled = 0;
+    stop_mode_protection = 0;
+    stop_mode_timer = 0;
+    
+    UART2_SendString("Continue\r\n");
+    GPIOA->BSRR = (1 << (LED_STOP_PIN + 16));
+}
+
+// ==== PWM Functions ====
+void make_triangle_sin_table(void) {
+    for (int i = 0; i < SAMPLES; i++) {
+        float phase = (float)i / SAMPLES;
+        float triangle = phase < 0.5f ? (2.0f * phase) : (2.0f * (1.0f - phase));
+        float sin_mod = (sinf(2 * PI * phase) + 1.0f) / 2.0f;
+        pwm_table[i] = (uint16_t)(triangle * sin_mod * 999);
+    }
+}
+
+void init_pwm(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
+    
+    GPIOA->MODER &= ~(3 << (8 * 2));
+    GPIOA->MODER |=  (2 << (8 * 2));
+    GPIOA->AFR[1] &= ~(0xF << ((8 - 8) * 4));
+    GPIOA->AFR[1] |=  (1 << ((8 - 8) * 4));
+    
+    TIM1->PSC = 83;
+    TIM1->ARR = 999;
+    
+    TIM1->CCMR1 |= (6 << 4);
+    TIM1->CCMR1 |= (1 << 3);
+    
+    TIM1->CCER |= TIM_CCER_CC1E;
+    TIM1->CR1 |= TIM_CR1_ARPE;
+    TIM1->BDTR |= TIM_BDTR_MOE;
+    TIM1->CR1 |= TIM_CR1_CEN;
+    
+    TIM1->EGR |= TIM_EGR_UG;
+}
+
+void update_pwm(void) {
+    if(buzzer_active == 1){
+        TIM1->CCR1 = pwm_table[current_index];
+        current_index = (current_index + 1) % SAMPLES;
+    } else{
+        TIM1->CCR1 = 0;
+    }
+}
+
+// ==== MQ2 Functions ====
+void MQ2_create(MQ2 *sensor) {
+    sensor->LPGCurve[0] = 2.3;
+    sensor->LPGCurve[1] = 0.21;
+    sensor->LPGCurve[2] = -0.47;
+    sensor->COCurve[0] = 2.3;
+    sensor->COCurve[1] = 0.72;
+    sensor->COCurve[2] = -0.34;
+    sensor->SmokeCurve[0] = 2.3;
+    sensor->SmokeCurve[1] = 0.53;
+    sensor->SmokeCurve[2] = -0.44;
+    sensor->Ro = -1.0;
+    sensor->lastReadTime = 0;
+}
+
+void MQ2_begin(MQ2 *sensor) {
+    sensor->Ro = MQ2_MQCalibration(sensor);
+    char buffer[50];
+    sprintf(buffer, "Ro: %.2f kohm\r\n", sensor->Ro);
+    UART2_SendString(buffer);
+}
+
+bool MQ2_checkCalibration(MQ2 *sensor) {
+    if (sensor->Ro < 0.0) {
+        UART2_SendString("MQ2 not calibrated!\r\n");
+        return false;
+    }
+    return true;
+}
+
+float MQ2_MQResistanceCalculation(int raw_adc) {
+    float flt_adc = (float) raw_adc;
+    return RL_VALUE * (4095.0 - flt_adc) / flt_adc;
+}
+
+float MQ2_MQCalibration(MQ2 *sensor) {
+    float val = 0.0;
+    
+    for (int i = 0; i < CALIBRATION_SAMPLE_TIMES; i++) {
+        val += MQ2_MQResistanceCalculation(ADC1_Read());
+        delay_ms(CALIBRATION_SAMPLE_INTERVAL);
+    }
+    
+    val = val / ((float) CALIBRATION_SAMPLE_TIMES);
+    val = val / RO_CLEAN_AIR_FACTOR;
+    
+    return val;
+}
+
+float MQ2_MQRead(MQ2 *sensor) {
+    float rs = 0.0;
+    
+    for (int i = 0; i < READ_SAMPLE_TIMES; i++) {
+        rs += MQ2_MQResistanceCalculation(ADC1_Read());
+        delay_ms(READ_SAMPLE_INTERVAL);
+    }
+    
+    return rs / ((float) READ_SAMPLE_TIMES);
+}
+
+float MQ2_MQGetPercentage(float *pcurve, MQ2 *sensor) {
+    float rs_ro_ratio = MQ2_MQRead(sensor) / sensor->Ro;
+    return pow(10.0, ((log(rs_ro_ratio) - pcurve[1]) / pcurve[2]) + pcurve[0]);
+}
+
+float* MQ2_read(MQ2 *sensor, bool print) {
+    if (!MQ2_checkCalibration(sensor)) return NULL;
+    
+    sensor->values[0] = MQ2_MQGetPercentage(sensor->LPGCurve, sensor);
+    sensor->values[1] = MQ2_MQGetPercentage(sensor->COCurve, sensor);
+    sensor->values[2] = MQ2_MQGetPercentage(sensor->SmokeCurve, sensor);
+    
+    sensor->lastReadTime = system_tick;
+    
+    if (print) {
+        char buffer[100];
+        sprintf(buffer, "LPG: %.1f ppm, CO: %.1f ppm, Smoke: %.1f ppm\r\n", 
+                sensor->values[0], sensor->values[1], sensor->values[2]);
+        UART2_SendString(buffer);
+    }
+    
+    return sensor->values;
+}
+
+float MQ2_readLPG(MQ2 *sensor) {
+    if (!MQ2_checkCalibration(sensor)) return 0.0;
+    
+    if (system_tick < (sensor->lastReadTime + READ_DELAY) && sensor->values[0] > 0)
+        return sensor->values[0];
+    else
+        return (sensor->values[0] = MQ2_MQGetPercentage(sensor->LPGCurve, sensor));
+}
+
+float MQ2_readCO(MQ2 *sensor) {
+    if (!MQ2_checkCalibration(sensor)) return 0.0;
+    
+    if (system_tick < (sensor->lastReadTime + READ_DELAY) && sensor->values[1] > 0)
+        return sensor->values[1];
+    else
+        return (sensor->values[1] = MQ2_MQGetPercentage(sensor->COCurve, sensor));
+}
+
+float MQ2_readSmoke(MQ2 *sensor) {
+    if (!MQ2_checkCalibration(sensor)) return 0.0;
+    
+    if (system_tick < (sensor->lastReadTime + READ_DELAY) && sensor->values[2] > 0)
+        return sensor->values[2];
+    else
+        return (sensor->values[2] = MQ2_MQGetPercentage(sensor->SmokeCurve, sensor));
+}

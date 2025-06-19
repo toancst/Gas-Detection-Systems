@@ -1,0 +1,4 @@
+../Core/Src/system.c:7:6:SysTick_Init	4	static
+../Core/Src/system.c:15:6:SysTick_Handler	4	static
+../Core/Src/system.c:19:6:Delay_ms	24	static
+../Core/Src/system.c:24:10:GetTick	4	static

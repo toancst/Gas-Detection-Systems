@@ -1,0 +1,3 @@
+../Core/Src/adc.c:6:6:ADC_Init	1
+../Core/Src/adc.c:19:10:ADC_Read	2
+../Core/Src/adc.c:25:9:Mode_Update_From_ADC	4

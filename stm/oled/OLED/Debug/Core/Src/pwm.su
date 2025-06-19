@@ -1,0 +1,2 @@
+../Core/Src/pwm.c:5:6:PWM_Init	4	static
+../Core/Src/pwm.c:24:6:Update_PWM_From_Mode	16	static
