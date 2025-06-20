@@ -320,3 +320,8 @@
 2025-06-20 08:53:30,234 [INFO] ThirdParty:978 - Integrity check success = true
 2025-06-20 08:53:30,234 [INFO] IntegrityCheckThread:100 - exiting critical section [integrity check]
 2025-06-20 08:53:30,234 [INFO] IntegrityCheckThread:103 - End integrity checks thread
+2025-06-20 09:59:16,954 [INFO] WebApp:190 - Connection lost
+2025-06-20 09:59:17,274 [INFO] WebApp:187 - Connection restablished
+2025-06-20 09:59:22,455 [INFO] WebApp:190 - Connection lost
+2025-06-20 09:59:22,608 [INFO] WebApp:187 - Connection restablished
+2025-06-20 11:04:20,411 [ERROR] LogOutputStream:75 - [STDERR_REDIRECT] 

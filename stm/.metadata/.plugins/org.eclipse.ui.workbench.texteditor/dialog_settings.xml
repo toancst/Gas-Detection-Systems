@@ -1,35 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <section name="Workbench">
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog">
-		<item key="selection" value="MID"/>
+		<item key="selection" value="ADC"/>
 		<item key="wrap" value="true"/>
 		<item key="casesensitive" value="false"/>
 		<item key="wholeword" value="false"/>
 		<item key="incremental" value="false"/>
 		<item key="isRegEx" value="false"/>
 		<list key="findhistory">
-			<item value="mid"/>
-			<item value="if (reset_protection_timer &gt;= 500"/>
-			<item value="if (stop_mode_timer &gt;= 1000)"/>
-			<item value="Send_Gas_Value"/>
-			<item value="Read_Button"/>
-			<item value="value"/>
+			<item value="adc"/>
+			<item value="TIM1"/>
+			<item value="PB0_PORT"/>
+			<item value="PB0_PORT-&gt;PUPDR |= (2U &lt;&lt; (PB0_PIN * 2));"/>
+			<item value="button "/>
 			<item value="button"/>
-			<item value="update_pwm()"/>
-			<item value="buzzer_active"/>
-			<item value="TIM1_Buzzer_Init"/>
-			<item value="Buzzer_Control"/>
-			<item value="delay"/>
-			<item value="delay_ms"/>
-			<item value="115200"/>
-			<item value="void TIM3_UP_TIM10_IRQHandler(void)"/>
+			<item value="buttib"/>
+			<item value="EXTI0_IRQHandler"/>
+			<item value="pending flag"/>
+			<item value="void UART2_Init(void)"/>
+			<item value="void UART2_Init"/>
+			<item value="I2C_WriteByte(0x3C, 0x00, 0xAE);"/>
+			<item value="reg"/>
+			<item value="I2C1-&gt;CR2 = 16;"/>
+			<item value="IRQ"/>
 		</list>
 		<list key="replacehistory">
 		</list>
 	</section>
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog_dialogBounds">
-		<item key="DIALOG_X_ORIGIN" value="1246"/>
-		<item key="DIALOG_Y_ORIGIN" value="261"/>
+		<item key="DIALOG_X_ORIGIN" value="1089"/>
+		<item key="DIALOG_Y_ORIGIN" value="314"/>
 		<item key="DIALOG_WIDTH" value="414"/>
 		<item key="DIALOG_HEIGHT" value="454"/>
 		<item key="DIALOG_FONT_NAME" value="1|Segoe UI|9.0|0|WINDOWS|1|-15|0|0|0|400|0|0|0|1|0|0|0|0|Segoe UI"/>

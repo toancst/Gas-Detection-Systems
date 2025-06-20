@@ -191,11 +191,12 @@ int main(void) {
             oled_need_update = 0;
         }
 
-        // Button handling is done in ISRs
+        // Button handling is now done in ISRs, no polling needed here
         delay_ms(10);
     }
 }
 
+// --- Initialization Functions ---
 
 void UART2_Init(void) {
     RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
@@ -438,6 +439,8 @@ void update_pwm(void) {
     }
 }
 
+
+// --- Communication & Display Functions ---
 
 void UART2_SendChar(uint8_t c) {
     while (!(USART2->SR & USART_SR_TXE));
