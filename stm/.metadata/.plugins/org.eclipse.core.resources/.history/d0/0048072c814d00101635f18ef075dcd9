@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <math.h>
 
-// ... (Tất cả các định nghĩa #define vẫn giữ nguyên) ...
 #define MQ2_PIN_PORT    GPIOA
 #define MQ2_PIN         0
 

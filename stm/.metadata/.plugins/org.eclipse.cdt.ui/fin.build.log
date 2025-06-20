@@ -1,4 +1,4 @@
-20:20:47 **** Incremental Build of configuration Debug for project fin ****
+08:53:26 **** Build of configuration Debug for project fin ****
 make -j16 all 
 arm-none-eabi-gcc "../Core/Src/main.c" -mcpu=cortex-m4 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F401xC -c -I../Core/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/main.d" -MT"Core/Src/main.o" --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o "Core/Src/main.o"
 arm-none-eabi-g++ -o "fin.elf" @"objects.list"   -mcpu=cortex-m4 -T"D:\prj-upload-github\nhung\Gas-Detection-Systems\stm\fin\STM32F401CCUX_FLASH.ld" --specs=nosys.specs -Wl,-Map="fin.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -u _scanf_float -Wl,--start-group -lc -lm -lstdc++ -lsupc++ -Wl,--end-group
@@ -7,11 +7,11 @@ Finished building target: fin.elf
 arm-none-eabi-size  fin.elf 
 arm-none-eabi-objdump -h -S fin.elf  > "fin.list"
    text	   data	    bss	    dec	    hex	filename
-  31416	    468	   2148	  34032	   84f0	fin.elf
+  31424	    468	   2148	  34040	   84f8	fin.elf
 Finished building: default.size.stdout
  
 Finished building: fin.list
  
 
-20:20:48 Build Finished. 0 errors, 0 warnings. (took 1s.133ms)
+08:53:33 Build Finished. 0 errors, 0 warnings. (took 6s.639ms)
 

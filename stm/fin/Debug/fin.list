@@ -7,23 +7,23 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
   1 .text         00006fb4  080001a0  080001a0  000011a0  2**4
                   CONTENTS, ALLOC, LOAD, READONLY, CODE
-  2 .rodata       00000960  08007158  08007158  00008158  2**3
+  2 .rodata       00000968  08007158  08007158  00008158  2**3
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
-  3 .ARM.extab    00000000  08007ab8  08007ab8  000091d4  2**0
+  3 .ARM.extab    00000000  08007ac0  08007ac0  000091d4  2**0
                   CONTENTS
-  4 .ARM          00000008  08007ab8  08007ab8  00008ab8  2**2
+  4 .ARM          00000008  08007ac0  08007ac0  00008ac0  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
-  5 .preinit_array 00000000  08007ac0  08007ac0  000091d4  2**0
+  5 .preinit_array 00000000  08007ac8  08007ac8  000091d4  2**0
                   CONTENTS, ALLOC, LOAD, DATA
-  6 .init_array   00000004  08007ac0  08007ac0  00008ac0  2**2
+  6 .init_array   00000004  08007ac8  08007ac8  00008ac8  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
-  7 .fini_array   00000004  08007ac4  08007ac4  00008ac4  2**2
+  7 .fini_array   00000004  08007acc  08007acc  00008acc  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
-  8 .data         000001d4  20000000  08007ac8  00009000  2**2
+  8 .data         000001d4  20000000  08007ad0  00009000  2**2
                   CONTENTS, ALLOC, LOAD, DATA
-  9 .bss          00000264  200001d4  08007c9c  000091d4  2**2
+  9 .bss          00000264  200001d4  08007ca4  000091d4  2**2
                   ALLOC
- 10 ._user_heap_stack 00000600  20000438  08007c9c  00009438  2**0
+ 10 ._user_heap_stack 00000600  20000438  08007ca4  00009438  2**0
                   ALLOC
  11 .ARM.attributes 00000030  00000000  00000000  000091d4  2**0
                   CONTENTS, READONLY
@@ -2048,7 +2048,7 @@ void Handle_PB1_Press(void) {
 void System_Reset(void) {
  800139c:	b580      	push	{r7, lr}
  800139e:	af00      	add	r7, sp, #0
-    UART2_SendString("222222\r\n");
+    UART2_SendString("222222\r\n111111\r\n");
  80013a0:	4803      	ldr	r0, [pc, #12]	@ (80013b0 <System_Reset+0x14>)
  80013a2:	f7ff fdb7 	bl	8000f14 <UART2_SendString>
     delay_ms(100);  // Đợi ngắn để thông báo được gửi
@@ -2116,7 +2116,7 @@ void Enter_Stop_Mode(void) {
  80013fc:	200002ca 	.word	0x200002ca
  8001400:	200002d0 	.word	0x200002d0
  8001404:	200002cc 	.word	0x200002cc
- 8001408:	08007170 	.word	0x08007170
+ 8001408:	08007178 	.word	0x08007178
  800140c:	40020000 	.word	0x40020000
  8001410:	200002d9 	.word	0x200002d9
  8001414:	200002bc 	.word	0x200002bc
@@ -2154,7 +2154,7 @@ void Exit_Stop_Mode(void) {
  8001440:	200002ca 	.word	0x200002ca
  8001444:	200002d0 	.word	0x200002d0
  8001448:	200002cc 	.word	0x200002cc
- 800144c:	0800717c 	.word	0x0800717c
+ 800144c:	08007184 	.word	0x08007184
  8001450:	40020000 	.word	0x40020000
  8001454:	00000000 	.word	0x00000000
 
@@ -3118,10 +3118,10 @@ void SSD1306_PrintString(char *str) {
  8001b52:	3708      	adds	r7, #8
  8001b54:	46bd      	mov	sp, r7
  8001b56:	bd80      	pop	{r7, pc}
- 8001b58:	080071e4 	.word	0x080071e4
- 8001b5c:	08007298 	.word	0x08007298
- 8001b60:	0800729d 	.word	0x0800729d
- 8001b64:	080072a2 	.word	0x080072a2
+ 8001b58:	080071ec 	.word	0x080071ec
+ 8001b5c:	080072a0 	.word	0x080072a0
+ 8001b60:	080072a5 	.word	0x080072a5
+ 8001b64:	080072aa 	.word	0x080072aa
 
 08001b68 <SSD1306_PrintNumber>:
 
@@ -3148,7 +3148,7 @@ void SSD1306_PrintNumber(uint16_t num) {
  8001b8e:	46bd      	mov	sp, r7
  8001b90:	bd80      	pop	{r7, pc}
  8001b92:	bf00      	nop
- 8001b94:	08007188 	.word	0x08007188
+ 8001b94:	08007190 	.word	0x08007190
 
 08001b98 <SSD1306_UpdateDisplay>:
 
@@ -3256,20 +3256,20 @@ void SSD1306_UpdateDisplay(void) {
  8001c42:	bf00      	nop
  8001c44:	bd80      	pop	{r7, pc}
  8001c46:	bf00      	nop
- 8001c48:	0800718c 	.word	0x0800718c
+ 8001c48:	08007194 	.word	0x08007194
  8001c4c:	200002c8 	.word	0x200002c8
- 8001c50:	08007194 	.word	0x08007194
+ 8001c50:	0800719c 	.word	0x0800719c
  8001c54:	200002ca 	.word	0x200002ca
- 8001c58:	0800719c 	.word	0x0800719c
- 8001c5c:	080071a4 	.word	0x080071a4
- 8001c60:	080071ac 	.word	0x080071ac
- 8001c64:	080071b4 	.word	0x080071b4
- 8001c68:	080071b8 	.word	0x080071b8
- 8001c6c:	080071c0 	.word	0x080071c0
- 8001c70:	080071cc 	.word	0x080071cc
+ 8001c58:	080071a4 	.word	0x080071a4
+ 8001c5c:	080071ac 	.word	0x080071ac
+ 8001c60:	080071b4 	.word	0x080071b4
+ 8001c64:	080071bc 	.word	0x080071bc
+ 8001c68:	080071c0 	.word	0x080071c0
+ 8001c6c:	080071c8 	.word	0x080071c8
+ 8001c70:	080071d4 	.word	0x080071d4
  8001c74:	200002d9 	.word	0x200002d9
- 8001c78:	080071d4 	.word	0x080071d4
- 8001c7c:	080071dc 	.word	0x080071dc
+ 8001c78:	080071dc 	.word	0x080071dc
+ 8001c7c:	080071e4 	.word	0x080071e4
 
 08001c80 <NMI_Handler>:
 /******************************************************************************/
@@ -3921,7 +3921,7 @@ void SystemCoreClockUpdate(void)
  8001f6c:	20000004 	.word	0x20000004
  8001f70:	00f42400 	.word	0x00f42400
  8001f74:	017d7840 	.word	0x017d7840
- 8001f78:	080072a8 	.word	0x080072a8
+ 8001f78:	080072b0 	.word	0x080072b0
 
 08001f7c <Reset_Handler>:
 
@@ -4009,7 +4009,7 @@ LoopFillZerobss:
   ldr r1, =_edata
  8001fbc:	200001d4 	.word	0x200001d4
   ldr r2, =_sidata
- 8001fc0:	08007ac8 	.word	0x08007ac8
+ 8001fc0:	08007ad0 	.word	0x08007ad0
   ldr r2, =_sbss
  8001fc4:	200001d4 	.word	0x200001d4
   ldr r4, =_ebss
@@ -4371,11 +4371,11 @@ __weak void HAL_IncTick(void)
  8002404:	2e85a308 	.word	0x2e85a308
  8002408:	43490f80 	.word	0x43490f80
  800240c:	3f22f984 	.word	0x3f22f984
- 8002410:	080072b8 	.word	0x080072b8
+ 8002410:	080072c0 	.word	0x080072c0
  8002414:	2e85a300 	.word	0x2e85a300
  8002418:	248d3132 	.word	0x248d3132
  800241c:	43800000 	.word	0x43800000
- 8002420:	08007338 	.word	0x08007338
+ 8002420:	08007340 	.word	0x08007340
 
 08002424 <fabsf>:
  8002424:	ee10 3a10 	vmov	r3, s0
@@ -4647,8 +4647,8 @@ __weak void HAL_IncTick(void)
  8002720:	3401      	adds	r4, #1
  8002722:	eee6 7a87 	vfma.f32	s15, s13, s14
  8002726:	e7f0      	b.n	800270a <__kernel_rem_pio2f+0x2d6>
- 8002728:	0800767c 	.word	0x0800767c
- 800272c:	08007650 	.word	0x08007650
+ 8002728:	08007684 	.word	0x08007684
+ 800272c:	08007658 	.word	0x08007658
  8002730:	43800000 	.word	0x43800000
  8002734:	3b800000 	.word	0x3b800000
  8002738:	00000000 	.word	0x00000000
@@ -5349,11 +5349,11 @@ __weak void HAL_IncTick(void)
  8002e70:	e7ee      	b.n	8002e50 <_printf_float+0x2a4>
  8002e72:	bf00      	nop
  8002e74:	7fefffff 	.word	0x7fefffff
- 8002e78:	08007688 	.word	0x08007688
- 8002e7c:	0800768c 	.word	0x0800768c
- 8002e80:	08007690 	.word	0x08007690
- 8002e84:	08007694 	.word	0x08007694
- 8002e88:	08007698 	.word	0x08007698
+ 8002e78:	08007690 	.word	0x08007690
+ 8002e7c:	08007694 	.word	0x08007694
+ 8002e80:	08007698 	.word	0x08007698
+ 8002e84:	0800769c 	.word	0x0800769c
+ 8002e88:	080076a0 	.word	0x080076a0
  8002e8c:	6da3      	ldr	r3, [r4, #88]	@ 0x58
  8002e8e:	f8dd a028 	ldr.w	sl, [sp, #40]	@ 0x28
  8002e92:	4553      	cmp	r3, sl
@@ -5833,8 +5833,8 @@ __weak void HAL_IncTick(void)
  800330c:	f104 0619 	add.w	r6, r4, #25
  8003310:	e7f5      	b.n	80032fe <_printf_i+0x222>
  8003312:	bf00      	nop
- 8003314:	0800769a 	.word	0x0800769a
- 8003318:	080076ab 	.word	0x080076ab
+ 8003314:	080076a2 	.word	0x080076a2
+ 8003318:	080076b3 	.word	0x080076b3
 
 0800331c <_scanf_float>:
  800331c:	e92d 4ff0 	stmdb	sp!, {r4, r5, r6, r7, r8, r9, sl, fp, lr}
@@ -6230,8 +6230,8 @@ __weak void HAL_IncTick(void)
  8003734:	f04f 0900 	mov.w	r9, #0
  8003738:	e629      	b.n	800338e <_scanf_float+0x72>
  800373a:	bf00      	nop
- 800373c:	080076bc 	.word	0x080076bc
- 8003740:	08007a55 	.word	0x08007a55
+ 800373c:	080076c4 	.word	0x080076c4
+ 8003740:	08007a5d 	.word	0x08007a5d
 
 08003744 <std>:
  8003744:	2300      	movs	r3, #0
@@ -6601,10 +6601,10 @@ __weak void HAL_IncTick(void)
  8003a72:	4798      	blx	r3
  8003a74:	3601      	adds	r6, #1
  8003a76:	e7f2      	b.n	8003a5e <__libc_init_array+0x1e>
- 8003a78:	08007ac0 	.word	0x08007ac0
- 8003a7c:	08007ac0 	.word	0x08007ac0
- 8003a80:	08007ac0 	.word	0x08007ac0
- 8003a84:	08007ac4 	.word	0x08007ac4
+ 8003a78:	08007ac8 	.word	0x08007ac8
+ 8003a7c:	08007ac8 	.word	0x08007ac8
+ 8003a80:	08007ac8 	.word	0x08007ac8
+ 8003a84:	08007acc 	.word	0x08007acc
 
 08003a88 <__retarget_lock_init_recursive>:
  8003a88:	4770      	bx	lr
@@ -7008,15 +7008,15 @@ __weak void HAL_IncTick(void)
  8003e6c:	3fc68a28 	.word	0x3fc68a28
  8003e70:	509f79fb 	.word	0x509f79fb
  8003e74:	3fd34413 	.word	0x3fd34413
- 8003e78:	080076ce 	.word	0x080076ce
- 8003e7c:	080076e5 	.word	0x080076e5
+ 8003e78:	080076d6 	.word	0x080076d6
+ 8003e7c:	080076ed 	.word	0x080076ed
  8003e80:	7ff00000 	.word	0x7ff00000
- 8003e84:	08007699 	.word	0x08007699
+ 8003e84:	080076a1 	.word	0x080076a1
  8003e88:	3ff80000 	.word	0x3ff80000
- 8003e8c:	080077e0 	.word	0x080077e0
- 8003e90:	0800773d 	.word	0x0800773d
- 8003e94:	080076ca 	.word	0x080076ca
- 8003e98:	08007698 	.word	0x08007698
+ 8003e8c:	080077e8 	.word	0x080077e8
+ 8003e90:	08007745 	.word	0x08007745
+ 8003e94:	080076d2 	.word	0x080076d2
+ 8003e98:	080076a0 	.word	0x080076a0
  8003e9c:	f8db 301c 	ldr.w	r3, [fp, #28]
  8003ea0:	6018      	str	r0, [r3, #0]
  8003ea2:	9b07      	ldr	r3, [sp, #28]
@@ -7268,8 +7268,8 @@ __weak void HAL_IncTick(void)
  8004162:	f7fc fa51 	bl	8000608 <__aeabi_dmul>
  8004166:	e9cd 0102 	strd	r0, r1, [sp, #8]
  800416a:	e7c4      	b.n	80040f6 <_dtoa_r+0x546>
- 800416c:	080077e0 	.word	0x080077e0
- 8004170:	080077b8 	.word	0x080077b8
+ 800416c:	080077e8 	.word	0x080077e8
+ 8004170:	080077c0 	.word	0x080077c0
  8004174:	3ff00000 	.word	0x3ff00000
  8004178:	40240000 	.word	0x40240000
  800417c:	401c0000 	.word	0x401c0000
@@ -7871,8 +7871,8 @@ __weak void HAL_IncTick(void)
  8004728:	f000 f968 	bl	80049fc <__multadd>
  800472c:	4681      	mov	r9, r0
  800472e:	e7ea      	b.n	8004706 <_dtoa_r+0xb56>
- 8004730:	0800773d 	.word	0x0800773d
- 8004734:	080076c1 	.word	0x080076c1
+ 8004730:	08007745 	.word	0x08007745
+ 8004734:	080076c9 	.word	0x080076c9
 
 08004738 <_free_r>:
  8004738:	b538      	push	{r3, r4, r5, lr}
@@ -8156,8 +8156,8 @@ __weak void HAL_IncTick(void)
  80049a8:	e9c0 3303 	strd	r3, r3, [r0, #12]
  80049ac:	e7f7      	b.n	800499e <_Balloc+0x66>
  80049ae:	bf00      	nop
- 80049b0:	080076ce 	.word	0x080076ce
- 80049b4:	0800774e 	.word	0x0800774e
+ 80049b0:	080076d6 	.word	0x080076d6
+ 80049b4:	08007756 	.word	0x08007756
 
 080049b8 <_Bfree>:
  80049b8:	b570      	push	{r4, r5, r6, lr}
@@ -8185,8 +8185,8 @@ __weak void HAL_IncTick(void)
  80049ec:	6021      	str	r1, [r4, #0]
  80049ee:	f843 4022 	str.w	r4, [r3, r2, lsl #2]
  80049f2:	bd70      	pop	{r4, r5, r6, pc}
- 80049f4:	080076ce 	.word	0x080076ce
- 80049f8:	0800774e 	.word	0x0800774e
+ 80049f4:	080076d6 	.word	0x080076d6
+ 80049f8:	08007756 	.word	0x08007756
 
 080049fc <__multadd>:
  80049fc:	e92d 41f0 	stmdb	sp!, {r4, r5, r6, r7, r8, lr}
@@ -8240,8 +8240,8 @@ __weak void HAL_IncTick(void)
  8004a78:	6125      	str	r5, [r4, #16]
  8004a7a:	4620      	mov	r0, r4
  8004a7c:	e8bd 81f0 	ldmia.w	sp!, {r4, r5, r6, r7, r8, pc}
- 8004a80:	0800773d 	.word	0x0800773d
- 8004a84:	0800774e 	.word	0x0800774e
+ 8004a80:	08007745 	.word	0x08007745
+ 8004a84:	08007756 	.word	0x08007756
 
 08004a88 <__s2b>:
  8004a88:	e92d 43f8 	stmdb	sp!, {r3, r4, r5, r6, r7, r8, r9, lr}
@@ -8302,8 +8302,8 @@ __weak void HAL_IncTick(void)
  8004b0c:	f7ff ff76 	bl	80049fc <__multadd>
  8004b10:	e7ee      	b.n	8004af0 <__s2b+0x68>
  8004b12:	bf00      	nop
- 8004b14:	0800773d 	.word	0x0800773d
- 8004b18:	0800774e 	.word	0x0800774e
+ 8004b14:	08007745 	.word	0x08007745
+ 8004b18:	08007756 	.word	0x08007756
 
 08004b1c <__hi0bits>:
  8004b1c:	f5b0 3f80 	cmp.w	r0, #65536	@ 0x10000
@@ -8393,8 +8393,8 @@ __weak void HAL_IncTick(void)
  8004bd2:	6103      	str	r3, [r0, #16]
  8004bd4:	bd10      	pop	{r4, pc}
  8004bd6:	bf00      	nop
- 8004bd8:	0800773d 	.word	0x0800773d
- 8004bdc:	0800774e 	.word	0x0800774e
+ 8004bd8:	08007745 	.word	0x08007745
+ 8004bdc:	08007756 	.word	0x08007756
 
 08004be0 <__multiply>:
  8004be0:	e92d 4ff0 	stmdb	sp!, {r4, r5, r6, r7, r8, r9, sl, fp, lr}
@@ -8513,8 +8513,8 @@ __weak void HAL_IncTick(void)
  8004d26:	e799      	b.n	8004c5c <__multiply+0x7c>
  8004d28:	3e01      	subs	r6, #1
  8004d2a:	e79b      	b.n	8004c64 <__multiply+0x84>
- 8004d2c:	0800773d 	.word	0x0800773d
- 8004d30:	0800774e 	.word	0x0800774e
+ 8004d2c:	08007745 	.word	0x08007745
+ 8004d30:	08007756 	.word	0x08007756
 
 08004d34 <__pow5mult>:
  8004d34:	e92d 43f8 	stmdb	sp!, {r3, r4, r5, r6, r7, r8, r9, lr}
@@ -8582,9 +8582,9 @@ __weak void HAL_IncTick(void)
  8004dd4:	4630      	mov	r0, r6
  8004dd6:	e8bd 83f8 	ldmia.w	sp!, {r3, r4, r5, r6, r7, r8, r9, pc}
  8004dda:	bf00      	nop
- 8004ddc:	080077a8 	.word	0x080077a8
- 8004de0:	080076ce 	.word	0x080076ce
- 8004de4:	0800774e 	.word	0x0800774e
+ 8004ddc:	080077b0 	.word	0x080077b0
+ 8004de0:	080076d6 	.word	0x080076d6
+ 8004de4:	08007756 	.word	0x08007756
 
 08004de8 <__lshift>:
  8004de8:	e92d 47f0 	stmdb	sp!, {r4, r5, r6, r7, r8, r9, sl, lr}
@@ -8663,8 +8663,8 @@ __weak void HAL_IncTick(void)
  8004eb2:	d8f9      	bhi.n	8004ea8 <__lshift+0xc0>
  8004eb4:	e7ea      	b.n	8004e8c <__lshift+0xa4>
  8004eb6:	bf00      	nop
- 8004eb8:	0800773d 	.word	0x0800773d
- 8004ebc:	0800774e 	.word	0x0800774e
+ 8004eb8:	08007745 	.word	0x08007745
+ 8004ebc:	08007756 	.word	0x08007756
 
 08004ec0 <__mcmp>:
  8004ec0:	690a      	ldr	r2, [r1, #16]
@@ -8800,8 +8800,8 @@ __weak void HAL_IncTick(void)
  8005012:	3f01      	subs	r7, #1
  8005014:	e7e7      	b.n	8004fe6 <__mdiff+0xee>
  8005016:	bf00      	nop
- 8005018:	0800773d 	.word	0x0800773d
- 800501c:	0800774e 	.word	0x0800774e
+ 8005018:	08007745 	.word	0x08007745
+ 800501c:	08007756 	.word	0x08007756
 
 08005020 <__ulp>:
  8005020:	b082      	sub	sp, #8
@@ -8951,8 +8951,8 @@ __weak void HAL_IncTick(void)
  800519e:	f7ff fcbd 	bl	8004b1c <__hi0bits>
  80051a2:	ebc0 1042 	rsb	r0, r0, r2, lsl #5
  80051a6:	e7e5      	b.n	8005174 <__d2b+0x74>
- 80051a8:	0800773d 	.word	0x0800773d
- 80051ac:	0800774e 	.word	0x0800774e
+ 80051a8:	08007745 	.word	0x08007745
+ 80051ac:	08007756 	.word	0x08007756
 
 080051b0 <__ratio>:
  80051b0:	e92d 4ff0 	stmdb	sp!, {r4, r5, r6, r7, r8, r9, sl, fp, lr}
@@ -9354,8 +9354,8 @@ __weak void HAL_IncTick(void)
  800555c:	e785      	b.n	800546a <_strtod_l+0x192>
  800555e:	f04f 0c01 	mov.w	ip, #1
  8005562:	e7f8      	b.n	8005556 <_strtod_l+0x27e>
- 8005564:	080078c0 	.word	0x080078c0
- 8005568:	080078a8 	.word	0x080078a8
+ 8005564:	080078c8 	.word	0x080078c8
+ 8005568:	080078b0 	.word	0x080078b0
  800556c:	7ff00000 	.word	0x7ff00000
  8005570:	9a19      	ldr	r2, [sp, #100]	@ 0x64
  8005572:	1c51      	adds	r1, r2, #1
@@ -9648,13 +9648,13 @@ __weak void HAL_IncTick(void)
  800584e:	6013      	str	r3, [r2, #0]
  8005850:	e768      	b.n	8005724 <_strtod_l+0x44c>
  8005852:	bf00      	nop
- 8005854:	08007695 	.word	0x08007695
- 8005858:	080078ac 	.word	0x080078ac
- 800585c:	0800768d 	.word	0x0800768d
- 8005860:	080076c4 	.word	0x080076c4
- 8005864:	08007a55 	.word	0x08007a55
- 8005868:	080077e0 	.word	0x080077e0
- 800586c:	080077b8 	.word	0x080077b8
+ 8005854:	0800769d 	.word	0x0800769d
+ 8005858:	080078b4 	.word	0x080078b4
+ 800585c:	08007695 	.word	0x08007695
+ 8005860:	080076cc 	.word	0x080076cc
+ 8005864:	08007a5d 	.word	0x08007a5d
+ 8005868:	080077e8 	.word	0x080077e8
+ 800586c:	080077c0 	.word	0x080077c0
  8005870:	7ff00000 	.word	0x7ff00000
  8005874:	7ca00000 	.word	0x7ca00000
  8005878:	7fefffff 	.word	0x7fefffff
@@ -9940,7 +9940,7 @@ __weak void HAL_IncTick(void)
  8005b26:	6013      	str	r3, [r2, #0]
  8005b28:	e600      	b.n	800572c <_strtod_l+0x454>
  8005b2a:	bf00      	nop
- 8005b2c:	080078d8 	.word	0x080078d8
+ 8005b2c:	080078e0 	.word	0x080078e0
  8005b30:	fffffc02 	.word	0xfffffc02
  8005b34:	39500000 	.word	0x39500000
  8005b38:	7ff00000 	.word	0x7ff00000
@@ -10366,7 +10366,7 @@ __weak void HAL_IncTick(void)
  8005f94:	d1f6      	bne.n	8005f84 <_strtol_l.constprop.0+0xd8>
  8005f96:	f8c8 1000 	str.w	r1, [r8]
  8005f9a:	e794      	b.n	8005ec6 <_strtol_l.constprop.0+0x1a>
- 8005f9c:	08007901 	.word	0x08007901
+ 8005f9c:	08007909 	.word	0x08007909
 
 08005fa0 <_strtol_r>:
  8005fa0:	f7ff bf84 	b.w	8005eac <_strtol_l.constprop.0>
@@ -10646,11 +10646,11 @@ __weak void HAL_IncTick(void)
  8006238:	4638      	mov	r0, r7
  800623a:	f7fc ff4f 	bl	80030dc <_printf_i>
  800623e:	e7ed      	b.n	800621c <_svfiprintf_r+0x1c0>
- 8006240:	08007a01 	.word	0x08007a01
- 8006244:	08007a0b 	.word	0x08007a0b
+ 8006240:	08007a09 	.word	0x08007a09
+ 8006244:	08007a13 	.word	0x08007a13
  8006248:	08002bad 	.word	0x08002bad
  800624c:	08005fa5 	.word	0x08005fa5
- 8006250:	08007a07 	.word	0x08007a07
+ 8006250:	08007a0f 	.word	0x08007a0f
 
 08006254 <__sflush_r>:
  8006254:	f9b1 200c 	ldrsh.w	r2, [r1, #12]
@@ -10907,9 +10907,9 @@ __weak void HAL_IncTick(void)
  8006478:	e7f4      	b.n	8006464 <__assert_func+0x14>
  800647a:	bf00      	nop
  800647c:	20000018 	.word	0x20000018
- 8006480:	08007a55 	.word	0x08007a55
- 8006484:	08007a27 	.word	0x08007a27
- 8006488:	08007a1a 	.word	0x08007a1a
+ 8006480:	08007a5d 	.word	0x08007a5d
+ 8006484:	08007a2f 	.word	0x08007a2f
+ 8006488:	08007a22 	.word	0x08007a22
 
 0800648c <_calloc_r>:
  800648c:	b570      	push	{r4, r5, r6, lr}
@@ -11297,9 +11297,9 @@ __weak void HAL_IncTick(void)
  800682e:	2b00      	cmp	r3, #0
  8006830:	d1dd      	bne.n	80067ee <__gethex+0x26a>
  8006832:	e7ee      	b.n	8006812 <__gethex+0x28e>
- 8006834:	080078a8 	.word	0x080078a8
- 8006838:	0800773d 	.word	0x0800773d
- 800683c:	08007a56 	.word	0x08007a56
+ 8006834:	080078b0 	.word	0x080078b0
+ 8006838:	08007745 	.word	0x08007745
+ 800683c:	08007a5e 	.word	0x08007a5e
  8006840:	1e6f      	subs	r7, r5, #1
  8006842:	f1b9 0f00 	cmp.w	r9, #0
  8006846:	d130      	bne.n	80068aa <__gethex+0x326>
@@ -11434,7 +11434,7 @@ __weak void HAL_IncTick(void)
  800699a:	42b0      	cmp	r0, r6
  800699c:	dbe7      	blt.n	800696e <__gethex+0x3ea>
  800699e:	e7f0      	b.n	8006982 <__gethex+0x3fe>
- 80069a0:	0800773d 	.word	0x0800773d
+ 80069a0:	08007745 	.word	0x08007745
 
 080069a4 <L_shift>:
  80069a4:	f1c2 0208 	rsb	r2, r2, #8
@@ -11968,11 +11968,11 @@ __weak void HAL_IncTick(void)
  8006e68:	4630      	mov	r0, r6
  8006e6a:	f7fc f937 	bl	80030dc <_printf_i>
  8006e6e:	e7e4      	b.n	8006e3a <_vfiprintf_r+0x1e6>
- 8006e70:	08007a01 	.word	0x08007a01
- 8006e74:	08007a0b 	.word	0x08007a0b
+ 8006e70:	08007a09 	.word	0x08007a09
+ 8006e74:	08007a13 	.word	0x08007a13
  8006e78:	08002bad 	.word	0x08002bad
  8006e7c:	08006c31 	.word	0x08006c31
- 8006e80:	08007a07 	.word	0x08007a07
+ 8006e80:	08007a0f 	.word	0x08007a0f
 
 08006e84 <__swbuf_r>:
  8006e84:	b5f8      	push	{r3, r4, r5, r6, r7, lr}

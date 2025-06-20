@@ -3,8 +3,8 @@
 #include "ThingSpeak.h"
 
 // WiFi config
-const char* ssid = "P519";
-const char* password = "deocomatkhau";
+const char* ssid = "UET-Wifi-Office-Free 2.4Ghz";
+const char* password = "";
 
 // ThingSpeak config
 const unsigned long myChannelNumber = 2983255;
@@ -73,7 +73,6 @@ void checkAlerts(int currentPpm) {
 
 void setup() {
   Serial.begin(115200);
-
   pinMode(ledGreen, OUTPUT);
   pinMode(ledYellow, OUTPUT);
   pinMode(ledRed, OUTPUT);
@@ -82,6 +81,9 @@ void setup() {
 
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) delay(500);
+  Serial.println("WiFi connected.");
+  Serial.print("Local IP Address: ");
+  Serial.println(WiFi.localIP());
 
   ThingSpeak.begin(thingSpeakClient);
   server.begin();
